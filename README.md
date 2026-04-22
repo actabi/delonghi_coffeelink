@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/actabi/delonghi_coffeelink?style=for-the-badge)](LICENSE)
 [![Validate](https://img.shields.io/github/actions/workflow/status/actabi/delonghi_coffeelink/validate.yml?branch=main&style=for-the-badge)](https://github.com/actabi/delonghi_coffeelink/actions)
 
-[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=actabi&repository=delonghi_coffeelink&category=integration)
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=actabi&repository=delonghi_coffeelink&category=integration) -> 
 [![Add Integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=delonghi_coffeelink)
 
 Home Assistant custom integration for DeLonghi PrimaDonna Soul and other Ayla-based DeLonghi coffee machines, controlled through the Coffee Link cloud.
