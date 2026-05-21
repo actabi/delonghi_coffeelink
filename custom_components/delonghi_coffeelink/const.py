@@ -15,6 +15,14 @@ AYLA_EU_USER_URL = "https://user-field-eu.aylanetworks.com"
 # Polling
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
+# Property names vary by model:
+# - PrimaDonna Soul (DL-millcore): data_request / data_response / device_connected
+# - Eletta Explore (DL-striker-cb): app_data_request / app_data_response / app_device_connected
+# Listed in detection priority order.
+COMMAND_PROPERTY_CANDIDATES = ["data_request", "app_data_request"]
+RESPONSE_PROPERTY_CANDIDATES = ["data_response", "app_data_response"]
+CONNECTED_PROPERTY_CANDIDATES = ["device_connected", "app_device_connected"]
+
 # Config
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"

@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/actabi/delonghi_coffeelink/issues",
   "loggers": ["custom_components.delonghi_coffeelink"],
   "requirements": [],
-  "version": "0.2.3"
+  "version": "0.3.0"
 }

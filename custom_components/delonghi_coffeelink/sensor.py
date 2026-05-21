@@ -88,6 +88,12 @@ class DelonghiCounterSensor(_Base):
 class DelonghiInfoSensor(_Base):
     """Generic info sensor (version string, timestamp, etc.)."""
 
+    # Some property names differ across DeLonghi models (e.g. device_connected
+    # vs app_device_connected). When the primary name is missing, try a fallback.
+    _FALLBACKS = {
+        "device_connected": "app_device_connected",
+    }
+
     def __init__(
         self,
         coord: DelonghiCoordinator,
@@ -101,7 +107,10 @@ class DelonghiInfoSensor(_Base):
 
     @property
     def native_value(self) -> Any:
-        prop = (self.coordinator.data or {}).get(self._prop_name)
+        data = self.coordinator.data or {}
+        prop = data.get(self._prop_name)
+        if not prop and self._prop_name in self._FALLBACKS:
+            prop = data.get(self._FALLBACKS[self._prop_name])
         if not prop:
             return None
         return prop.get("value")

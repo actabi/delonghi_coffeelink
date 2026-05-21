@@ -110,8 +110,9 @@ def _register_services(hass: HomeAssistant, coordinators: list[DelonghiCoordinat
     async def _send_raw(call: ServiceCall) -> None:
         value = call.data["value_base64"]
         for coord in coordinators:
+            prop = coord.command_property or "data_request"
             await coord.client.async_set_property_value(
-                coord.device.dsn, "data_request", value
+                coord.device.dsn, prop, value
             )
             await coord.async_request_refresh()
 
