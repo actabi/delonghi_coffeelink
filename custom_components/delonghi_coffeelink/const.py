@@ -74,28 +74,35 @@ BEVERAGES = [
     (0x1b, "brew_over_ice",   "Brew Over Ice",    "mdi:coffee"),
 ]
 
-# Counter properties to expose as sensors: (property_name, entity_key, display_name, icon)
+# Counter properties to expose as sensors:
+#   (candidate_property_names, entity_key, display_name, icon)
+# Property names differ between models; the first candidate present on the device
+# wins (same approach as COMMAND_PROPERTY_CANDIDATES). A sensor whose property is
+# absent on the device is not created (avoids permanently-"unknown" entities).
+#   - PrimaDonna Soul (DL-millcore): d700_tot_bev_b, d701_tot_bev_bw, d703_tot_bev_w, d825_descale_status
+#   - Eletta Explore (DL-striker-cb): d701_tot_bev_b (no milk/water/descale equivalents exposed)
 COUNTER_SENSORS = [
-    ("d700_tot_bev_b",         "total_beverages",     "Total Beverages",     "mdi:counter"),
-    ("d704_tot_bev_espressi",  "total_espresso",      "Total Espresso",      "mdi:coffee"),
-    ("d701_tot_bev_bw",        "total_milk_drinks",   "Total Milk Drinks",   "mdi:cup"),
-    ("d703_tot_bev_w",         "total_water",         "Total Water",         "mdi:water"),
-    ("d710_tot_id7_capp",      "total_cappuccino",    "Total Cappuccino",    "mdi:coffee"),
-    ("d711_id8_lattmacc",      "total_latte_macchiato", "Total Latte Macchiato", "mdi:coffee"),
-    ("d712_id9_cafflatt",      "total_caffelatte",    "Total Caffe Latte",   "mdi:coffee"),
-    ("d715_id12_hotmilk",      "total_hot_milk",      "Total Hot Milk",      "mdi:cup"),
-    ("d718_id16_hotwater",     "total_hot_water",     "Total Hot Water",     "mdi:water"),
-    ("d719_id22_tea",          "total_tea",           "Total Tea",           "mdi:tea"),
-    ("d720_tot_id23_coffee_pot", "total_coffee_pot",  "Total Coffee Pot",    "mdi:coffee-maker"),
-    ("d551_cnt_coffee_fondi",  "grounds_counter",     "Grounds Counter",     "mdi:dots-grid"),
-    ("d825_descale_status",    "descale_status",      "Descale Status",      "mdi:water-pump"),
-    ("d556_water_hardness",    "water_hardness",      "Water Hardness",      "mdi:water-percent"),
+    (["d700_tot_bev_b", "d701_tot_bev_b"], "total_beverages",       "Total Beverages",       "mdi:counter"),
+    (["d704_tot_bev_espressi"],            "total_espresso",        "Total Espresso",        "mdi:coffee"),
+    (["d701_tot_bev_bw"],                  "total_milk_drinks",     "Total Milk Drinks",     "mdi:cup"),
+    (["d703_tot_bev_w"],                   "total_water",           "Total Water",           "mdi:water"),
+    (["d710_tot_id7_capp"],                "total_cappuccino",      "Total Cappuccino",      "mdi:coffee"),
+    (["d711_id8_lattmacc"],                "total_latte_macchiato", "Total Latte Macchiato", "mdi:coffee"),
+    (["d712_id9_cafflatt"],                "total_caffelatte",      "Total Caffe Latte",     "mdi:coffee"),
+    (["d715_id12_hotmilk"],                "total_hot_milk",        "Total Hot Milk",        "mdi:cup"),
+    (["d718_id16_hotwater"],               "total_hot_water",       "Total Hot Water",       "mdi:water"),
+    (["d719_id22_tea"],                    "total_tea",             "Total Tea",             "mdi:tea"),
+    (["d720_tot_id23_coffee_pot"],         "total_coffee_pot",      "Total Coffee Pot",      "mdi:coffee-maker"),
+    (["d551_cnt_coffee_fondi"],            "grounds_counter",       "Grounds Counter",       "mdi:dots-grid"),
+    (["d825_descale_status"],              "descale_status",        "Descale Status",        "mdi:water-pump"),
+    (["d556_water_hardness"],              "water_hardness",        "Water Hardness",        "mdi:water-percent"),
 ]
 
-# Info sensors (not counters, general state)
+# Info sensors (not counters, general state):
+#   (candidate_property_names, entity_key, display_name, icon)
 INFO_SENSORS = [
-    ("software_version",       "software_version",    "Software Version",    "mdi:chip"),
-    ("device_connected",       "last_connected",      "Last Connected",      "mdi:clock-outline"),
+    (["software_version"],                         "software_version", "Software Version", "mdi:chip"),
+    (["device_connected", "app_device_connected"], "last_connected",   "Last Connected",   "mdi:clock-outline"),
 ]
 
 PLATFORMS = ["sensor", "button"]
