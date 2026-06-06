@@ -12,11 +12,11 @@ Home Assistant custom integration for DeLonghi PrimaDonna Soul and other Ayla-ba
 
 ## Supported machines
 
-Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla Networks IoT (tested with PrimaDonna Soul ECAM 612.55.SB). Likely compatible with:
+Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla Networks IoT. Confirmed working:
 
-- PrimaDonna Soul ECAM610.xx, ECAM612.xx, ECAM613.xx
-- Eletta Explore ECAM450.xx (Wi-Fi models)
-- Other Coffee Link Wi-Fi machines
+- **PrimaDonna Soul** ECAM610.xx, ECAM612.xx, ECAM613.xx (`oem_model = DL-millcore`) - works out of the box.
+- **Eletta Explore** ECAM45x.xx (`oem_model = DL-striker-cb`) - beverages and power-on confirmed working; needs a one-time "teach from the app" step per drink (see [Eletta Explore](#eletta-explore-and-other-non-soul-models) below).
+- Other Coffee Link Wi-Fi machines may work; the same teach-from-app mechanism applies.
 
 ## Features
 
@@ -24,6 +24,25 @@ Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla N
 - Counters sensors (total beverages, per-drink counters, descale status)
 - Generic Stop button
 - Services for raw binary command injection (advanced use)
+
+## Eletta Explore (and other non-Soul models)
+
+The PrimaDonna Soul this integration was built on uses a fixed beverage command. The **Eletta Explore** (`oem_model = DL-striker-cb`) - and likely other non-Soul models - uses a **different, variable-length command** (the recipe, quantity, intensity and milk are all encoded in the bytes, and the frame carries a per-device signature). Rather than guess those bytes, the integration **learns the exact command your machine's official app sends and replays it** - which is reliable by construction.
+
+So on an Eletta Explore there is a **one-time teach step**, after which everything works from Home Assistant (and is remembered across restarts):
+
+**Beverages**
+1. Make sure Home Assistant is running and the machine is online.
+2. **Start each drink once from the official Coffee Link app.** Home Assistant captures the exact bytes (you can confirm on the *Last Captured Command* diagnostic sensor: `style: eletta`, `crc_valid: true`).
+3. From then on, the matching Home Assistant button (or `start_beverage` service) brews that drink.
+
+**Power-on (Wake)**
+1. With Home Assistant running, **power the machine on once from the official app.**
+2. From then on the **Wake** button powers it from standby.
+
+> If you change a drink's settings in the app (e.g. quantity), start it once more from the app so Home Assistant re-learns the new bytes.
+
+A read-only **Dump Recipe Datapoints** diagnostic button is also provided; it logs the recipe definitions the machine stores (it sends nothing to the machine). See [issue #1](https://github.com/actabi/delonghi_coffeelink/issues/1) for the reverse-engineering details.
 
 ## IMPORTANT - Coffee Link mobile app must be closed
 
@@ -88,7 +107,7 @@ This integration implements the Coffee Link authentication and command protocol:
 4. Poll Ayla Networks IoT cloud for 312 device properties
 5. Send binary commands via the `data_request` property (base64-encoded)
 
-Command format (18 bytes):
+Beverage command format - **PrimaDonna Soul** (fixed 18 bytes):
 
 ```
 byte  0-1  : 0x0d 0x0d       prefix + length
@@ -99,6 +118,8 @@ byte  6-11 : recipe params   temperature, quantity, aroma
 byte 12-13 : CRC16 AUG-CCITT over bytes 0..11
 byte 14-17 : Unix timestamp (big-endian)
 ```
+
+**Eletta Explore** (`DL-striker-cb`) uses a **variable-length** frame: the same `0x83 0xf0 <bev> <action>` header, then a variable recipe block (quantity in ml, intensity and milk encoded inline), the same CRC16 AUG-CCITT (over the whole frame before the CRC), the timestamp, and a 4-byte per-device signature. Because the recipe layout varies, the integration does not synthesize this frame; it **replays the exact frame captured from the official app** (see [Eletta Explore](#eletta-explore-and-other-non-soul-models)). The power-on frame uses family `0x84 0x0f` and is handled the same way.
 
 ## Diagnostics - capturing what the official app sends
 
