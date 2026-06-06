@@ -40,6 +40,7 @@ if "delonghi_coffeelink" not in sys.modules:
 
 const = _load("const", "const.py")
 cb = _load("command_builder", "command_builder.py")
+mp = _load("model_profiles", "model_profiles.py")
 
 
 # --- CRC -------------------------------------------------------------------
@@ -329,6 +330,52 @@ def test_recipe_dump_lines_handles_non_base64_and_empty():
     assert "d060_rec_1_regular = not base64 !!" in lines
     assert any(line.startswith("d061_rec_1_long_coffee = ") for line in lines)
     assert "d062_rec_1_2x_espresso = raw-string-not-dict" in lines
+
+
+# --- model profiles (per-oem behaviour, extensible) ------------------------
+
+def test_profile_detection_by_oem_model():
+    """Known oem_model families resolve to their profile."""
+    assert mp.profile_for("DL-millcore").key == "soul"
+    assert mp.profile_for("DL-striker-cb").key == "eletta"
+    # Prefix match, not exact.
+    assert mp.profile_for("DL-millcore-x").key == "soul"
+
+
+def test_profile_unknown_model_defaults_sensibly():
+    """Unknown model: replay (eletta-style) works on any machine, so it's the
+    default - unless the plain data_request channel says it's Soul-like."""
+    assert mp.profile_for(None).key == "eletta"
+    assert mp.profile_for("DL-future-xyz").key == "eletta"
+    assert mp.profile_for("DL-future-xyz", command_property="data_request").key == "soul"
+    assert mp.profile_for("DL-future-xyz", command_property="app_data_request").key == "eletta"
+
+
+def test_soul_profile_synthesizes_commands():
+    """Soul does not learn; it always returns a synthesized command value."""
+    soul = mp.profile_for("DL-millcore")
+    assert soul.learns_from_app is False
+    # Returns a real value regardless of learned frames (synthesized).
+    val = soul.beverage_value(0x10, const.ACTION_START, learned_frame=None)
+    assert isinstance(val, str) and val
+    assert isinstance(soul.wake_value(None), str)
+
+
+def test_eletta_profile_requires_learned_frame():
+    """Eletta learns; without a learned frame it signals None (needs teaching),
+    with one it replays it (timestamp refreshed)."""
+    eletta = mp.profile_for("DL-striker-cb")
+    assert eletta.learns_from_app is True
+    assert eletta.beverage_value(0x01, const.ACTION_START, learned_frame=None) is None
+    assert eletta.wake_value(None) is None
+    # With a learned frame -> replays it as a valid frame.
+    learned = base64.b64encode(
+        bytes.fromhex("0d 07 84 0f 02 01 55 12 6a 24 79 c0 00 d3 2f 8c".replace(" ", ""))
+    ).decode()
+    out = eletta.wake_value(learned)
+    assert isinstance(out, str)
+    d = cb.decode_command(out)
+    assert d["type"] == "power" and d["crc_valid"] is True
 
 
 # --- learned-frame persistence (serialize/deserialize) ---------------------

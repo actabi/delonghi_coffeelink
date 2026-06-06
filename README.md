@@ -147,6 +147,28 @@ Each device has a diagnostic sensor **Last Captured Command**
 App-originated captures are also logged (enable debug logging for
 `custom_components.delonghi_coffeelink`) as `CAPTURED app->machine command ...`.
 
+## Adding a new machine model
+
+Your machine isn't a PrimaDonna Soul or an Eletta Explore? **It very likely already works.** Unknown models default to the *learn-and-replay* path: trigger each drink (and power-on) once from the official Coffee Link app, Home Assistant captures the exact bytes and replays them (see [Eletta Explore](#eletta-explore-and-other-non-soul-models) for the procedure). That works on any Coffee Link machine without any code change.
+
+If you'd like **first-class support** for your model (so it's recognised by name, and so we can document/optimise it), open an issue with the data below. Everything needed is already exposed by the integration's diagnostics - **no network sniffing, no rooting, just copy/paste.**
+
+**1. Identify the machine**
+- Commercial name + full reference under the machine (e.g. `Maestosa ECAM650.85.MS`).
+- Coffee Link account region (EU / US).
+- The `oem_model` and `sw_version`: enable debug logging for `custom_components.delonghi_coffeelink`, restart, and copy the `Discovered DeLonghi device:` log line.
+
+**2. What the official app sends** (the ground truth we replay)
+For each drink you care about, **start it from the official app** with Home Assistant running, then copy the **Attributes** of the `...Last Captured Command` sensor (Developer Tools → States). Do the same for **power-on**. Each block shows `style`, `beverage_id`, the full `recipe`/`hex`, `crc_valid`, and the device signature - exactly what's needed.
+
+**3. The recipes the machine stores** (for the optional "zero-touch" path)
+Press the **Dump Recipe Datapoints** diagnostic button and paste the logged block (it's read-only - it sends nothing to the machine).
+
+**4. Does it work after teaching?**
+Tell us whether the Home Assistant buttons brew/power the machine after you've triggered them once from the app (yes/no per drink, and whether the machine was already on or in standby).
+
+With that, adding first-class support is usually just a new `ModelProfile` subclass in [`model_profiles.py`](custom_components/delonghi_coffeelink/model_profiles.py) (detection rule + whether it learns from the app) - nothing else in the integration needs to change. The Eletta Explore reverse-engineering, captured frame-by-frame this way, is tracked in [issue #1](https://github.com/actabi/delonghi_coffeelink/issues/1) as a worked example.
+
 ## Credits
 
 - Reverse engineering of Coffee Link auth & protocol: @actabi (2026)

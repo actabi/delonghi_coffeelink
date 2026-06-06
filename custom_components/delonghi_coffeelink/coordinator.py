@@ -24,11 +24,11 @@ from .const import (
     COMMAND_PROPERTY_CANDIDATES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    ELETTA_OEM_PREFIX,
     RECIPE_STORE_SAVE_DELAY,
     RECIPE_STORE_VERSION,
     RESPONSE_PROPERTY_CANDIDATES,
 )
+from .model_profiles import profile_for
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,6 +50,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.client = client
         self.device = device
+        # Per-model behaviour (synthesize vs learn-and-replay). All model-specific
+        # differences live in model_profiles.py; this object is the single source.
+        self.profile = profile_for(device.oem_model)
         self.command_property: str | None = None
         self.response_property: str | None = None
         # --- Command sniffer state ---------------------------------------
@@ -88,6 +91,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.command_property = self._detect_property(
                     props, COMMAND_PROPERTY_CANDIDATES, "command"
                 )
+                # Refine the model profile now the live command channel is known
+                # (only matters for an unrecognised oem_model; idempotent for the
+                # PrimaDonna Soul / Eletta Explore which match by oem_model).
+                self.profile = profile_for(self.device.oem_model, self.command_property)
             if self.response_property is None:
                 # Optional: absence is fine, the sniffer just skips responses.
                 self.response_property = self._detect_property(
@@ -220,18 +227,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Remember a value we wrote so the sniffer won't flag it as app traffic."""
         self._sent_values.append(value)
 
-    @property
-    def is_eletta(self) -> bool:
-        """True for the Eletta Explore family (variable-length recipe frames).
-
-        Detected by oem_model, with the resolved command property as a fallback
-        (Eletta uses ``app_data_request``, Soul uses ``data_request``).
-        """
-        oem = (self.device.oem_model or "")
-        if oem.startswith(ELETTA_OEM_PREFIX):
-            return True
-        return self.command_property == "app_data_request"
-
     async def async_load_learned(self) -> None:
         """Load learned Eletta frames persisted from previous runs.
 
@@ -288,16 +283,16 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _maybe_learn_frame(self, decoded: dict) -> None:
         """Learn the exact frame the official app sent for a beverage.
 
-        Eletta machines ignore the Soul-style fixed recipe; replaying the app's
-        own frame verbatim is the reliable way to reproduce a beverage (quantity
-        / intensity / milk, the right start-action byte, and the device signature
-        are all preserved). Stop frames (action 0x02) are kept separately from
-        start frames so a captured stop never gets replayed for a start press.
-        The power-on (wake) frame is learned too - the app appends a device
-        signature a synthesized wake lacks. New/changed frames are persisted
-        (debounced) so they survive restarts.
+        Models that ``learns_from_app`` ignore the Soul-style fixed recipe;
+        replaying the app's own frame verbatim is the reliable way to reproduce a
+        beverage (quantity / intensity / milk, the right start-action byte, and
+        the device signature are all preserved). Stop frames (action 0x02) are
+        kept separately from start frames so a captured stop never gets replayed
+        for a start press. The power-on (wake) frame is learned too - the app
+        appends a device signature a synthesized wake lacks. New/changed frames
+        are persisted (debounced) so they survive restarts.
         """
-        if not self.is_eletta:
+        if not self.profile.learns_from_app:
             return
         raw_b64 = decoded.get("raw_b64")
         if not raw_b64:
@@ -307,7 +302,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if ftype == "power":
             if self.learned_wake_frame != raw_b64:
                 self.learned_wake_frame = raw_b64
-                _LOGGER.info("Learned Eletta wake/power-on frame: %s", raw_b64)
+                _LOGGER.info("Learned %s wake/power-on frame: %s", self.profile.key, raw_b64)
                 self._store.async_delay_save(
                     self._learned_storage_data, RECIPE_STORE_SAVE_DELAY
                 )
@@ -330,7 +325,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if table.get(bev_id) != raw_b64:
             table[bev_id] = raw_b64
             _LOGGER.info(
-                "Learned Eletta %s frame for beverage 0x%02x (%s): %s",
+                "Learned %s %s frame for beverage 0x%02x (%s): %s",
+                self.profile.key,
                 "stop" if decoded.get("action") == ACTION_STOP else "start",
                 bev_id,
                 decoded.get("beverage_name"),
@@ -342,35 +338,33 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_send_beverage(self, beverage_id: int, action: int) -> None:
         """Build + send a beverage command via the resolved command property."""
-        from .command_builder import build_and_encode, replay_with_timestamp
+        from .command_builder import build_and_encode
 
-        if self.is_eletta:
-            table = self.learned_stop_frames if action == ACTION_STOP else self.learned_start_frames
-            learned = table.get(beverage_id)
-            if learned is not None:
-                value = replay_with_timestamp(learned)
-                _LOGGER.info(
-                    "Sending Eletta beverage 0x%02x (%s) via learned frame replay: %s",
-                    beverage_id,
-                    "stop" if action == ACTION_STOP else "start",
-                    value,
-                )
-            else:
-                # No capture yet: the Soul frame is known not to work on Eletta,
-                # but send it best-effort so the call doesn't fail, and tell the
-                # user how to teach the integration the right bytes.
-                value = build_and_encode(beverage_id, action)
-                _LOGGER.warning(
-                    "No learned %s frame for Eletta beverage 0x%02x yet. Trigger "
-                    "this drink once from the official Coffee Link app so Home "
-                    "Assistant can capture and replay its exact bytes. Sending a "
-                    "best-effort Soul frame meanwhile (the machine will likely "
-                    "ignore it).",
-                    "stop" if action == ACTION_STOP else "start",
-                    beverage_id,
-                )
-        else:
+        table = self.learned_stop_frames if action == ACTION_STOP else self.learned_start_frames
+        learned = table.get(beverage_id)
+        value = self.profile.beverage_value(beverage_id, action, learned)
+        if value is None:
+            # The profile needs a learned frame we don't have yet: send a
+            # best-effort synthesized frame so the call doesn't fail, and tell
+            # the user how to teach the integration the right bytes.
             value = build_and_encode(beverage_id, action)
+            _LOGGER.warning(
+                "No learned %s frame for beverage 0x%02x yet (%s). Trigger this "
+                "drink once from the official Coffee Link app so Home Assistant "
+                "can capture and replay its exact bytes. Sending a best-effort "
+                "frame meanwhile (the machine will likely ignore it).",
+                "stop" if action == ACTION_STOP else "start",
+                beverage_id,
+                self.profile.label,
+            )
+        else:
+            _LOGGER.info(
+                "Sending %s beverage 0x%02x (%s): %s",
+                self.profile.key,
+                beverage_id,
+                "stop" if action == ACTION_STOP else "start",
+                value,
+            )
 
         self._record_sent(value)
         prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
@@ -386,24 +380,20 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_send_wake(self) -> None:
         """Send the WAKE / power-on command to bring the machine out of standby."""
-        from .command_builder import build_wake_encoded, replay_with_timestamp
+        from .command_builder import build_wake_encoded
 
-        if self.is_eletta and self.learned_wake_frame is not None:
-            # The synthesized wake is ignored by Eletta (it lacks the 4-byte
-            # device signature the app appends); replay the app's captured
-            # power-on frame verbatim with a fresh timestamp instead.
-            value = replay_with_timestamp(self.learned_wake_frame)
-            _LOGGER.info("Sending Eletta wake via learned frame replay: %s", value)
-        else:
+        value = self.profile.wake_value(self.learned_wake_frame)
+        if value is None:
+            # The profile needs a learned wake frame we don't have yet.
             value = build_wake_encoded()
-            if self.is_eletta:
-                _LOGGER.warning(
-                    "No learned wake frame for this Eletta yet. Power the machine "
-                    "on once from the official Coffee Link app so Home Assistant "
-                    "can capture and replay it. Sending a best-effort synthesized "
-                    "wake meanwhile (the machine will likely ignore it - it lacks "
-                    "the device signature the app appends)."
-                )
+            _LOGGER.warning(
+                "No learned wake frame for this %s yet. Power the machine on once "
+                "from the official Coffee Link app so Home Assistant can capture "
+                "and replay it. Sending a best-effort synthesized wake meanwhile "
+                "(the machine will likely ignore it - it lacks the device "
+                "signature the app appends).",
+                self.profile.label,
+            )
         self._record_sent(value)
         prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
         _LOGGER.info("Sending WAKE cmd via %s: %s", prop, value)

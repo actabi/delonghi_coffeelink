@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.8] - 2026-06-07
+
+### Changed
+- **Per-model behaviour extracted into model profiles** (`model_profiles.py`). All model-specific differences (synthesize vs learn-and-replay, command property, beverage/wake command building) now live in one small class per machine family (`SoulProfile`, `ElettaProfile`) instead of `if is_eletta` branches scattered across the coordinator. Adding first-class support for a new model is now a single new class. No behaviour change. Unknown models default to the universal learn-and-replay path. See the README "Adding a new machine model" section.
+
 ## [0.3.7] - 2026-06-06
 
 ### Added
