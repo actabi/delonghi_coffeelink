@@ -286,5 +286,35 @@ def test_replay_tolerates_garbage():
     assert isinstance(cb.replay_with_timestamp("AAEC", timestamp=1), str)  # too short
 
 
+# --- learned-frame persistence (serialize/deserialize) ---------------------
+
+def test_learned_frames_roundtrip():
+    """Serialize -> deserialize must preserve the per-beverage frames, with int
+    beverage ids restored from their hex string keys."""
+    start = {0x01: "ESPRESSO_B64", 0x10: "HOTWATER_B64"}
+    stop = {0x01: "ESPRESSO_STOP_B64"}
+    data = cb.serialize_learned_frames(start, stop)
+    # JSON-safe: keys are strings.
+    assert data == {
+        "start": {"0x01": "ESPRESSO_B64", "0x10": "HOTWATER_B64"},
+        "stop": {"0x01": "ESPRESSO_STOP_B64"},
+    }
+    back_start, back_stop = cb.deserialize_learned_frames(data)
+    assert back_start == start
+    assert back_stop == stop
+
+
+def test_deserialize_tolerates_missing_and_bad_data():
+    """A missing file (None), partial sections, or junk entries never raise."""
+    assert cb.deserialize_learned_frames(None) == ({}, {})
+    assert cb.deserialize_learned_frames({}) == ({}, {})
+    # Bad key / non-string value are skipped, good ones kept.
+    start, stop = cb.deserialize_learned_frames(
+        {"start": {"0x07": "ok", "zz": "bad-key", "0x09": 123}, "stop": None}
+    )
+    assert start == {0x07: "ok"}
+    assert stop == {}
+
+
 def test_summarize_handles_error():
     assert "undecodable" in cb.summarize_decoded(cb.decode_command(""))

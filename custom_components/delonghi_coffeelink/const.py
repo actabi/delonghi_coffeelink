@@ -15,6 +15,10 @@ AYLA_EU_USER_URL = "https://user-field-eu.aylanetworks.com"
 # Polling
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
+# Persistence of learned Eletta beverage frames (survives HA restarts).
+RECIPE_STORE_VERSION = 1
+RECIPE_STORE_SAVE_DELAY = 2  # seconds; debounce writes to disk
+
 # Property names vary by model:
 # - PrimaDonna Soul (DL-millcore): data_request / data_response / device_connected
 # - Eletta Explore (DL-striker-cb): app_data_request / app_data_response / app_device_connected

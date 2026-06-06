@@ -65,6 +65,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinators: list[DelonghiCoordinator] = []
     for device in devices:
         coord = DelonghiCoordinator(hass, client, device)
+        # Restore any Eletta frames learned in previous runs before the first
+        # refresh, so buttons can replay immediately after a restart.
+        await coord.async_load_learned()
         await coord.async_config_entry_first_refresh()
         if coord.data:
             prop_names = sorted(coord.data.keys())

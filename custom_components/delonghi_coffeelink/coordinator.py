@@ -7,12 +7,15 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient
 from .command_builder import (
     builder_structural_b64,
     decode_command,
+    deserialize_learned_frames,
+    serialize_learned_frames,
     summarize_decoded,
 )
 from .const import (
@@ -21,6 +24,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ELETTA_OEM_PREFIX,
+    RECIPE_STORE_SAVE_DELAY,
+    RECIPE_STORE_VERSION,
     RESPONSE_PROPERTY_CANDIDATES,
 )
 
@@ -62,8 +67,12 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # than rebuild all that, we learn the exact frame the official app sends
         # per beverage (sniffed below) and replay it verbatim with only a fresh
         # timestamp. Keyed by beverage_id; start and stop frames kept separately.
+        # Persisted to disk so the learning survives Home Assistant restarts.
         self.learned_start_frames: dict[int, str] = {}
         self.learned_stop_frames: dict[int, str] = {}
+        self._store: Store = Store(
+            hass, RECIPE_STORE_VERSION, f"{DOMAIN}_recipes_{device.dsn}"
+        )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all properties + refresh device meta."""
@@ -217,6 +226,30 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return True
         return self.command_property == "app_data_request"
 
+    async def async_load_learned(self) -> None:
+        """Load learned Eletta frames persisted from previous runs.
+
+        Called once at setup so a restart does not lose the per-beverage frames
+        the integration learned from the official app.
+        """
+        try:
+            data = await self._store.async_load()
+        except Exception:  # noqa: BLE001 - persistence must not block setup
+            _LOGGER.debug("Could not load learned recipes (non-fatal)", exc_info=True)
+            return
+        if not data:
+            return
+        self.learned_start_frames, self.learned_stop_frames = deserialize_learned_frames(data)
+        total = len(self.learned_start_frames) + len(self.learned_stop_frames)
+        if total:
+            _LOGGER.debug(
+                "Restored %d learned Eletta frame(s) for dsn=%s", total, self.device.dsn
+            )
+
+    def _learned_storage_data(self) -> dict:
+        """Callback for the debounced Store save."""
+        return serialize_learned_frames(self.learned_start_frames, self.learned_stop_frames)
+
     def _maybe_learn_frame(self, decoded: dict) -> None:
         """Learn the exact frame the official app sent for a beverage.
 
@@ -225,6 +258,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         / intensity / milk, the right start-action byte, and the device signature
         are all preserved). Stop frames (action 0x02) are kept separately from
         start frames so a captured stop never gets replayed for a start press.
+        New/changed frames are persisted (debounced) so they survive restarts.
         """
         if decoded.get("type") != "beverage" or decoded.get("style") != "eletta":
             return
@@ -249,6 +283,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 bev_id,
                 decoded.get("beverage_name"),
                 raw_b64,
+            )
+            self._store.async_delay_save(
+                self._learned_storage_data, RECIPE_STORE_SAVE_DELAY
             )
 
     async def async_send_beverage(self, beverage_id: int, action: int) -> None:

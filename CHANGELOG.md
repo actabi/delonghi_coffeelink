@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.5] - 2026-06-06
+
+### Added
+- **Learned Eletta frames now persist across Home Assistant restarts.** The per-beverage app frames captured for `oem_model=DL-striker-cb` are saved to disk (HA `Store`, debounced) and restored at setup, so you no longer have to re-trigger every drink from the official app after each restart - the integration teaches itself once and remembers.
+
 ## [0.3.4] - 2026-06-06
 
 ### Added
