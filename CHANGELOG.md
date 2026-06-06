@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.6] - 2026-06-06
+
+### Fixed
+- **Wake / power-on now works on Eletta Explore.** The synthesized wake frame was being ignored: the official app appends a 4-byte **device signature** after the timestamp (e.g. `00 d3 2f 8c`) that the built frame lacked - which is also why verbatim beverage replay already worked but a synthesized wake did not. The integration now **learns and replays the app's power-on frame** verbatim (fresh timestamp only), exactly like beverages. Power the machine on once from the official app so Home Assistant captures it; the learned wake frame is persisted across restarts. The Soul (`DL-millcore`) wake is unchanged.
+
 ## [0.3.5] - 2026-06-06
 
 ### Added

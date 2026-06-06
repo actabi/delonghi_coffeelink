@@ -281,6 +281,19 @@ def test_replay_swaps_only_timestamp_and_keeps_crc_valid():
     assert d["timestamp"] == 0x11223344
 
 
+def test_replay_wake_preserves_device_signature():
+    """The app's power-on frame carries a 4-byte device signature after the
+    timestamp that a synthesized wake lacks (the reason a built wake is ignored).
+    Replaying must keep that signature and only swap the timestamp."""
+    # Real app power-on capture (MrSpongy): 8-byte wake + ts + 00 d3 2f 8c sig.
+    app_wake_hex = "0d 07 84 0f 02 01 55 12 6a 24 79 c0 00 d3 2f 8c"
+    original = base64.b64encode(bytes.fromhex(app_wake_hex.replace(" ", ""))).decode()
+    replayed = base64.b64decode(cb.replay_with_timestamp(original, timestamp=0x11223344))
+    assert replayed.hex(" ") == "0d 07 84 0f 02 01 55 12 11 22 33 44 00 d3 2f 8c"
+    d = cb.decode_command(original)
+    assert d["type"] == "power" and d["crc_valid"] is True
+
+
 def test_replay_tolerates_garbage():
     """Never raises on odd input (diagnostic/runtime safety)."""
     assert isinstance(cb.replay_with_timestamp("AAEC", timestamp=1), str)  # too short
@@ -289,31 +302,42 @@ def test_replay_tolerates_garbage():
 # --- learned-frame persistence (serialize/deserialize) ---------------------
 
 def test_learned_frames_roundtrip():
-    """Serialize -> deserialize must preserve the per-beverage frames, with int
-    beverage ids restored from their hex string keys."""
+    """Serialize -> deserialize must preserve per-beverage frames and the wake
+    frame, with int beverage ids restored from their hex string keys."""
     start = {0x01: "ESPRESSO_B64", 0x10: "HOTWATER_B64"}
     stop = {0x01: "ESPRESSO_STOP_B64"}
-    data = cb.serialize_learned_frames(start, stop)
+    wake = "WAKE_B64"
+    data = cb.serialize_learned_frames(start, stop, wake)
     # JSON-safe: keys are strings.
     assert data == {
         "start": {"0x01": "ESPRESSO_B64", "0x10": "HOTWATER_B64"},
         "stop": {"0x01": "ESPRESSO_STOP_B64"},
+        "wake": "WAKE_B64",
     }
-    back_start, back_stop = cb.deserialize_learned_frames(data)
+    back_start, back_stop, back_wake = cb.deserialize_learned_frames(data)
     assert back_start == start
     assert back_stop == stop
+    assert back_wake == wake
+
+
+def test_serialize_omits_absent_wake():
+    """No wake learned yet -> no 'wake' key (and round-trips to None)."""
+    data = cb.serialize_learned_frames({0x01: "E"}, {})
+    assert "wake" not in data
+    assert cb.deserialize_learned_frames(data) == ({0x01: "E"}, {}, None)
 
 
 def test_deserialize_tolerates_missing_and_bad_data():
     """A missing file (None), partial sections, or junk entries never raise."""
-    assert cb.deserialize_learned_frames(None) == ({}, {})
-    assert cb.deserialize_learned_frames({}) == ({}, {})
-    # Bad key / non-string value are skipped, good ones kept.
-    start, stop = cb.deserialize_learned_frames(
-        {"start": {"0x07": "ok", "zz": "bad-key", "0x09": 123}, "stop": None}
+    assert cb.deserialize_learned_frames(None) == ({}, {}, None)
+    assert cb.deserialize_learned_frames({}) == ({}, {}, None)
+    # Bad key / non-string value are skipped, good ones kept; bad wake -> None.
+    start, stop, wake = cb.deserialize_learned_frames(
+        {"start": {"0x07": "ok", "zz": "bad-key", "0x09": 123}, "stop": None, "wake": 9}
     )
     assert start == {0x07: "ok"}
     assert stop == {}
+    assert wake is None
 
 
 def test_summarize_handles_error():

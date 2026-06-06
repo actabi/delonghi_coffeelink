@@ -70,6 +70,11 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Persisted to disk so the learning survives Home Assistant restarts.
         self.learned_start_frames: dict[int, str] = {}
         self.learned_stop_frames: dict[int, str] = {}
+        # Power-on (wake) is a single frame. The official app appends a 4-byte
+        # device signature the integration's synthesized wake lacks - which is
+        # why a built wake is ignored while a verbatim app replay works - so we
+        # learn and replay the app's power-on frame too.
+        self.learned_wake_frame: str | None = None
         self._store: Store = Store(
             hass, RECIPE_STORE_VERSION, f"{DOMAIN}_recipes_{device.dsn}"
         )
@@ -239,8 +244,16 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         if not data:
             return
-        self.learned_start_frames, self.learned_stop_frames = deserialize_learned_frames(data)
-        total = len(self.learned_start_frames) + len(self.learned_stop_frames)
+        (
+            self.learned_start_frames,
+            self.learned_stop_frames,
+            self.learned_wake_frame,
+        ) = deserialize_learned_frames(data)
+        total = (
+            len(self.learned_start_frames)
+            + len(self.learned_stop_frames)
+            + (1 if self.learned_wake_frame else 0)
+        )
         if total:
             _LOGGER.debug(
                 "Restored %d learned Eletta frame(s) for dsn=%s", total, self.device.dsn
@@ -248,7 +261,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _learned_storage_data(self) -> dict:
         """Callback for the debounced Store save."""
-        return serialize_learned_frames(self.learned_start_frames, self.learned_stop_frames)
+        return serialize_learned_frames(
+            self.learned_start_frames, self.learned_stop_frames, self.learned_wake_frame
+        )
 
     def _maybe_learn_frame(self, decoded: dict) -> None:
         """Learn the exact frame the official app sent for a beverage.
@@ -258,13 +273,30 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         / intensity / milk, the right start-action byte, and the device signature
         are all preserved). Stop frames (action 0x02) are kept separately from
         start frames so a captured stop never gets replayed for a start press.
-        New/changed frames are persisted (debounced) so they survive restarts.
+        The power-on (wake) frame is learned too - the app appends a device
+        signature a synthesized wake lacks. New/changed frames are persisted
+        (debounced) so they survive restarts.
         """
-        if decoded.get("type") != "beverage" or decoded.get("style") != "eletta":
+        if not self.is_eletta:
+            return
+        raw_b64 = decoded.get("raw_b64")
+        if not raw_b64:
+            return
+        ftype = decoded.get("type")
+
+        if ftype == "power":
+            if self.learned_wake_frame != raw_b64:
+                self.learned_wake_frame = raw_b64
+                _LOGGER.info("Learned Eletta wake/power-on frame: %s", raw_b64)
+                self._store.async_delay_save(
+                    self._learned_storage_data, RECIPE_STORE_SAVE_DELAY
+                )
+            return
+
+        if ftype != "beverage" or decoded.get("style") != "eletta":
             return
         bev_hex = decoded.get("beverage_id")
-        raw_b64 = decoded.get("raw_b64")
-        if not bev_hex or not raw_b64:
+        if not bev_hex:
             return
         try:
             bev_id = int(bev_hex, 16)
@@ -334,9 +366,24 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_send_wake(self) -> None:
         """Send the WAKE / power-on command to bring the machine out of standby."""
-        from .command_builder import build_wake_encoded
+        from .command_builder import build_wake_encoded, replay_with_timestamp
 
-        value = build_wake_encoded()
+        if self.is_eletta and self.learned_wake_frame is not None:
+            # The synthesized wake is ignored by Eletta (it lacks the 4-byte
+            # device signature the app appends); replay the app's captured
+            # power-on frame verbatim with a fresh timestamp instead.
+            value = replay_with_timestamp(self.learned_wake_frame)
+            _LOGGER.info("Sending Eletta wake via learned frame replay: %s", value)
+        else:
+            value = build_wake_encoded()
+            if self.is_eletta:
+                _LOGGER.warning(
+                    "No learned wake frame for this Eletta yet. Power the machine "
+                    "on once from the official Coffee Link app so Home Assistant "
+                    "can capture and replay it. Sending a best-effort synthesized "
+                    "wake meanwhile (the machine will likely ignore it - it lacks "
+                    "the device signature the app appends)."
+                )
         self._record_sent(value)
         prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
         _LOGGER.info("Sending WAKE cmd via %s: %s", prop, value)

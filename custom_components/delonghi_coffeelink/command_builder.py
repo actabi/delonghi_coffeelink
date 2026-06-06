@@ -94,22 +94,26 @@ def build_eletta_beverage_command(
 
 
 def serialize_learned_frames(
-    start: dict[int, str], stop: dict[int, str]
+    start: dict[int, str], stop: dict[int, str], wake: str | None = None
 ) -> dict:
     """Serialize the learned Eletta frames for persistence (HA Store / JSON).
 
     Beverage ids become hex strings (JSON keys must be strings); values are the
-    captured base64 frames, replayed as-is later with a fresh timestamp.
+    captured base64 frames, replayed as-is later with a fresh timestamp. The
+    optional power-on (``wake``) frame is a single captured frame.
     """
-    return {
+    data: dict = {
         "start": {f"0x{bev:02x}": frame for bev, frame in start.items()},
         "stop": {f"0x{bev:02x}": frame for bev, frame in stop.items()},
     }
+    if wake:
+        data["wake"] = wake
+    return data
 
 
 def deserialize_learned_frames(
     data: dict | None,
-) -> tuple[dict[int, str], dict[int, str]]:
+) -> tuple[dict[int, str], dict[int, str], str | None]:
     """Inverse of :func:`serialize_learned_frames`; tolerant of missing/odd data."""
     def _section(name: str) -> dict[int, str]:
         out: dict[int, str] = {}
@@ -125,7 +129,10 @@ def deserialize_learned_frames(
                 continue
         return out
 
-    return _section("start"), _section("stop")
+    wake = (data or {}).get("wake")
+    if not isinstance(wake, str):
+        wake = None
+    return _section("start"), _section("stop"), wake
 
 
 def replay_with_timestamp(value_b64: str, timestamp: int | None = None) -> str:
