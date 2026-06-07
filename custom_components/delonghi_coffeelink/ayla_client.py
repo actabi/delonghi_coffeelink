@@ -5,6 +5,7 @@ Auth chain: Gigya email/password login -> Gigya JWT (HMAC-SHA1 signed request)
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -19,9 +20,12 @@ import aiohttp
 
 from .const import (
     APP_ID,
+    APP_ID_PROPERTY,
     APP_SECRET,
     AYLA_EU_ADS_URL,
     AYLA_EU_USER_URL,
+    CONNECT_POLL_TIMEOUT,
+    CONNECT_REFRESH_INTERVAL,
     GIGYA_API_KEY,
     GIGYA_BASE_URL,
 )
@@ -190,3 +194,88 @@ class DelonghiAylaClient:
                     f"set_property {property_name} failed (HTTP {resp.status}): {text[:300]}"
                 )
             return await resp.json()
+
+    @staticmethod
+    def _normalize_signed_app_id(app_id: int) -> int:
+        """Convert to 32-bit signed int (dlghiot convention)."""
+        return ((app_id & 0xFFFFFFFF) ^ 0x80000000) - 0x80000000
+
+    @staticmethod
+    def app_id_to_bytes(app_id: int) -> bytes:
+        """Encode cloud app_id as 4 signed big-endian bytes."""
+        signed = DelonghiAylaClient._normalize_signed_app_id(app_id)
+        return signed.to_bytes(4, byteorder="big", signed=True)
+
+    async def async_get_property_value(self, dsn: str, property_name: str) -> Any:
+        """Return the current value of a single device property."""
+        props = await self.async_get_properties(dsn)
+        prop = props.get(property_name)
+        if isinstance(prop, dict):
+            return prop.get("value")
+        return None
+
+    async def async_ensure_device_connected(
+        self,
+        dsn: str,
+        connected_property: str,
+        cloud_app_id: int,
+        last_connect_at: float,
+    ) -> tuple[int, float]:
+        """Register (or refresh) a cloud app session before sending commands.
+
+        Mirrors dlghiot ``connect()``: POST timestamp+app_id to
+        ``app_device_connected`` / ``device_connected``, then wait until
+        ``app_id`` on the device matches.
+        """
+        now_s = time.time()
+        current_raw = await self.async_get_property_value(dsn, APP_ID_PROPERTY)
+        try:
+            current_app_id = int(current_raw) if current_raw is not None else 0
+        except (TypeError, ValueError):
+            current_app_id = 0
+
+        if (
+            current_app_id == cloud_app_id
+            and last_connect_at > 0
+            and last_connect_at + CONNECT_REFRESH_INTERVAL > now_s
+        ):
+            _LOGGER.debug(
+                "Cloud app session still valid for dsn=%s (app_id=%s)", dsn, cloud_app_id
+            )
+            return cloud_app_id, last_connect_at
+
+        if current_app_id not in (0, cloud_app_id):
+            _LOGGER.info(
+                "Another app holds session on dsn=%s (app_id=%s); adopting its id",
+                dsn,
+                current_app_id,
+            )
+            return current_app_id, last_connect_at
+
+        timestamp = int(now_s).to_bytes(4, byteorder="big")
+        payload = base64.b64encode(timestamp + self.app_id_to_bytes(cloud_app_id)).decode(
+            "ascii"
+        )
+        _LOGGER.info(
+            "Registering cloud app session on %s for dsn=%s (app_id=%s)",
+            connected_property,
+            dsn,
+            cloud_app_id,
+        )
+        await self.async_set_property_value(dsn, connected_property, payload)
+
+        deadline = now_s + CONNECT_POLL_TIMEOUT
+        while time.time() < deadline:
+            await asyncio.sleep(1)
+            raw = await self.async_get_property_value(dsn, APP_ID_PROPERTY)
+            try:
+                if int(raw) == cloud_app_id:
+                    _LOGGER.debug("Cloud app session confirmed for dsn=%s", dsn)
+                    return cloud_app_id, time.time()
+            except (TypeError, ValueError):
+                pass
+
+        _LOGGER.warning(
+            "Timed out waiting for app_id=%s on dsn=%s after connect", cloud_app_id, dsn
+        )
+        return cloud_app_id, time.time()

@@ -52,9 +52,37 @@ ELETTA_OEM_PREFIX = "DL-striker"
 ACTION_START = 0x01
 ACTION_STOP = 0x02
 
+# Cloud app session (dlghiot-compatible)
+DEFAULT_CLOUD_APP_ID = 0xC0FFEE11
+APP_ID_PROPERTY = "app_id"
+CONNECT_REFRESH_INTERVAL = 240  # seconds; refresh session before this elapses
+CONNECT_POLL_TIMEOUT = 15  # seconds waiting for app_id to update after connect
+
 # Power / Wake command family (0x84 0x0f)
 CMD_FAMILY_POWER = bytes([0x84, 0x0f])
-POWER_WAKE_PARAMS = bytes([0x02, 0x01])  # observed wake command payload
+POWER_WAKE_PARAMS = bytes([0x02, 0x01])  # wake from standby
+POWER_STANDBY_PARAMS = bytes([0x01, 0x01])  # turn off / standby
+POWER_REFRESH_PARAMS = bytes([0x03, 0x02])  # refresh app session (NOT wake)
+
+# Machine monitor (d302_monitor_machine)
+MONITOR_PROPERTY = "d302_monitor_machine"
+
+MACHINE_STATUS = {
+    0: "standby",
+    1: "waking_up",
+    2: "going_to_sleep",
+    4: "descaling",
+    5: "preparing_steam",
+    6: "recovering",
+    7: "ready",
+    8: "rinsing",
+    10: "preparing_milk",
+    11: "dispensing_hot_water",
+    12: "cleaning_milk",
+    16: "preparing_chocolate",
+    17: "preparing_milk_alt",
+    29: "unknown",
+}
 
 # Default recipe params (from captured hot water command)
 # Bytes: temp_flag, reserved, quantity_low, quantity_high?, recipe_type, ???

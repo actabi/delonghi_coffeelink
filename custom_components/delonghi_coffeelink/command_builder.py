@@ -14,8 +14,10 @@ from .const import (
     CMD_RESPONSE_PREFIX,
     CRC_INIT,
     CRC_POLY,
+    DEFAULT_CLOUD_APP_ID,
     DEFAULT_RECIPE_PARAMS,
     ELETTA_RECIPE_TRAILER,
+    POWER_STANDBY_PARAMS,
     POWER_WAKE_PARAMS,
 )
 
@@ -91,6 +93,37 @@ def build_eletta_beverage_command(
     frame = bytes([CMD_PREFIX, len(body) + 3]) + body
     frame += crc16_aug_ccitt(frame).to_bytes(2, "big")
     return frame + timestamp.to_bytes(4, "big")
+
+
+def build_eletta_beverage_with_app_id(
+    beverage_id: int,
+    action: int,
+    recipe_block: bytes,
+    app_id: int = DEFAULT_CLOUD_APP_ID,
+    timestamp: int | None = None,
+) -> bytes:
+    """Eletta beverage frame with dlghiot-style app_id tail (4 bytes after timestamp)."""
+    from .ayla_client import DelonghiAylaClient
+
+    frame = build_eletta_beverage_command(
+        beverage_id, action, recipe_block, timestamp=timestamp
+    )
+    return frame + DelonghiAylaClient.app_id_to_bytes(app_id)
+
+
+def build_eletta_beverage_encoded(
+    beverage_id: int,
+    action: int,
+    recipe_block: bytes,
+    app_id: int = DEFAULT_CLOUD_APP_ID,
+    timestamp: int | None = None,
+) -> str:
+    """Shortcut: build Eletta beverage + base64 encode."""
+    return encode_command(
+        build_eletta_beverage_with_app_id(
+            beverage_id, action, recipe_block, app_id=app_id, timestamp=timestamp
+        )
+    )
 
 
 def serialize_learned_frames(
@@ -192,6 +225,28 @@ def build_and_encode(beverage_id: int, action: int, params: bytes = DEFAULT_RECI
     return encode_command(build_beverage_command(beverage_id, action, params))
 
 
+def build_power_command(
+    params: bytes,
+    timestamp: int | None = None,
+    app_id: int = DEFAULT_CLOUD_APP_ID,
+) -> bytes:
+    """Build a 16-byte power frame: header+CRC + timestamp + app_id tail."""
+    from .ayla_client import DelonghiAylaClient
+
+    if timestamp is None:
+        timestamp = int(time.time())
+    header = bytes([CMD_PREFIX, 0x07, CMD_FAMILY_POWER[0], CMD_FAMILY_POWER[1]]) + params
+    if len(header) != 6:
+        raise ValueError(f"Power header must be 6 bytes, got {len(header)}")
+    crc = crc16_aug_ccitt(header)
+    return (
+        header
+        + crc.to_bytes(2, "big")
+        + timestamp.to_bytes(4, "big")
+        + DelonghiAylaClient.app_id_to_bytes(app_id)
+    )
+
+
 def build_wake_command(timestamp: int | None = None) -> bytes:
     """
     Build the WAKE / power-on command (different family 0x84 0x0f).
@@ -209,8 +264,34 @@ def build_wake_command(timestamp: int | None = None) -> bytes:
 
 
 def build_wake_encoded() -> str:
-    """Shortcut: build wake command + base64 encode."""
+    """Shortcut: build wake command + base64 encode (Soul-style, 12 bytes)."""
     return encode_command(build_wake_command())
+
+
+def build_wake_with_app_id_encoded(
+    app_id: int = DEFAULT_CLOUD_APP_ID,
+    timestamp: int | None = None,
+) -> str:
+    """Wake from standby with dlghiot-style app_id tail (16 bytes)."""
+    return encode_command(
+        build_power_command(POWER_WAKE_PARAMS, timestamp=timestamp, app_id=app_id)
+    )
+
+
+def build_standby_with_app_id_encoded(
+    app_id: int = DEFAULT_CLOUD_APP_ID,
+    timestamp: int | None = None,
+) -> str:
+    """Send machine to standby with dlghiot-style app_id tail."""
+    return encode_command(
+        build_power_command(POWER_STANDBY_PARAMS, timestamp=timestamp, app_id=app_id)
+    )
+
+
+def is_valid_wake_frame(value_b64: str) -> bool:
+    """Return True if a stored/learned frame is a wake (params 02 01), not refresh."""
+    decoded = decode_command(value_b64)
+    return decoded.get("type") == "power" and decoded.get("params") == POWER_WAKE_PARAMS.hex(" ")
 
 
 # ---------------------------------------------------------------------------

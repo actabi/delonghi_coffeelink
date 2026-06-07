@@ -60,6 +60,7 @@ async def async_setup_entry(
                 continue
             entities.append(DelonghiInfoSensor(coord, prop_name, key, friendly, icon))
         entities.append(DelonghiConnectionSensor(coord))
+        entities.append(DelonghiMachineStatusSensor(coord))
         entities.append(DelonghiLastCommandSensor(coord))
     async_add_entities(entities)
 
@@ -170,6 +171,34 @@ class DelonghiConnectionSensor(_Base):
     @property
     def native_value(self) -> str:
         return self.coordinator.device.connection_status
+
+
+class DelonghiMachineStatusSensor(_Base):
+    """Machine operational state from d302_monitor_machine (standby, ready, …)."""
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(coord, "machine_status", "Machine Status", "mdi:coffee-maker")
+
+    @property
+    def native_value(self) -> str | None:
+        monitor = self.coordinator.monitor or {}
+        if "error" in monitor:
+            return None
+        return monitor.get("status_name")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        monitor = self.coordinator.monitor or {}
+        attrs: dict[str, Any] = {}
+        if "status" in monitor:
+            attrs["status_code"] = monitor["status"]
+        if "progress" in monitor:
+            attrs["progress"] = monitor["progress"]
+        if "action" in monitor:
+            attrs["action"] = monitor["action"]
+        if "error" in monitor:
+            attrs["error"] = monitor["error"]
+        return attrs
 
 
 class DelonghiLastCommandSensor(_Base):

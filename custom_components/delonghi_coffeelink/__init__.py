@@ -13,6 +13,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .ayla_client import AuthError, CloudError, DelonghiAylaClient
 from .const import (
+    ACTION_START,
+    ACTION_STOP,
     BEVERAGES,
     CONF_EMAIL,
     CONF_PASSWORD,
@@ -103,22 +105,17 @@ def _register_services(hass: HomeAssistant, coordinators: list[DelonghiCoordinat
     async def _start_beverage(call: ServiceCall) -> None:
         bev_id = bev_by_key[call.data["beverage"]]
         for coord in coordinators:
-            await coord.async_send_beverage(bev_id, 0x01)
+            await coord.async_send_beverage(bev_id, ACTION_START)
 
     async def _stop_beverage(call: ServiceCall) -> None:
         bev_id = bev_by_key[call.data["beverage"]]
         for coord in coordinators:
-            await coord.async_send_beverage(bev_id, 0x02)
+            await coord.async_send_beverage(bev_id, ACTION_STOP)
 
     async def _send_raw(call: ServiceCall) -> None:
         value = call.data["value_base64"]
         for coord in coordinators:
-            prop = coord.command_property or "data_request"
-            coord._record_sent(value)
-            await coord.client.async_set_property_value(
-                coord.device.dsn, prop, value
-            )
-            await coord.async_request_refresh()
+            await coord.async_send_raw(value)
 
     hass.services.async_register(
         DOMAIN, SERVICE_START_BEVERAGE, _start_beverage, schema=SERVICE_START_SCHEMA

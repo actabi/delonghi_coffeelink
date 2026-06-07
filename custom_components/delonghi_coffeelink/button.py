@@ -11,7 +11,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import BEVERAGES, DOMAIN, MANUFACTURER
+from .const import ACTION_START, ACTION_STOP, BEVERAGES, DOMAIN, MANUFACTURER
 from .coordinator import DelonghiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = []
     for coord in coordinators:
         entities.append(DelonghiWakeButton(coord))
+        entities.append(DelonghiStandbyButton(coord))
         for bev_id, key, friendly, icon in BEVERAGES:
             entities.append(DelonghiStartBeverageButton(coord, bev_id, key, friendly, icon))
         entities.append(DelonghiStopButton(coord))
@@ -68,7 +69,7 @@ class DelonghiStartBeverageButton(_Base):
 
     async def async_press(self) -> None:
         _LOGGER.info("Start beverage 0x%02x (%s)", self._bev_id, self._attr_name)
-        await self.coordinator.async_send_beverage(self._bev_id, 0x01)
+        await self.coordinator.async_send_beverage(self._bev_id, ACTION_START)
 
 
 class DelonghiWakeButton(_Base):
@@ -85,6 +86,20 @@ class DelonghiWakeButton(_Base):
         await self.coordinator.async_send_wake()
 
 
+class DelonghiStandbyButton(_Base):
+    """Send the machine to standby / sleep."""
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(coord)
+        self._attr_unique_id = f"{coord.device.dsn}_standby"
+        self._attr_name = "Standby"
+        self._attr_icon = "mdi:sleep"
+
+    async def async_press(self) -> None:
+        _LOGGER.info("Sending STANDBY to machine")
+        await self.coordinator.async_send_standby()
+
+
 class DelonghiStopButton(_Base):
     """Press to STOP currently-running beverage (uses hot_water id + stop action as generic)."""
 
@@ -99,7 +114,7 @@ class DelonghiStopButton(_Base):
         # since that's the captured example. If machine needs the running beverage id,
         # a future version can track current bev and stop it appropriately.
         _LOGGER.info("Generic stop command")
-        await self.coordinator.async_send_beverage(0x10, 0x02)
+        await self.coordinator.async_send_beverage(0x10, ACTION_STOP)
 
 
 class DelonghiDumpRecipesButton(_Base):

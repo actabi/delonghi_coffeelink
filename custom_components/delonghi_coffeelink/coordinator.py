@@ -15,6 +15,7 @@ from .command_builder import (
     builder_structural_b64,
     decode_command,
     deserialize_learned_frames,
+    is_valid_wake_frame,
     recipe_dump_lines,
     serialize_learned_frames,
     summarize_decoded,
@@ -22,13 +23,18 @@ from .command_builder import (
 from .const import (
     ACTION_STOP,
     COMMAND_PROPERTY_CANDIDATES,
+    CONNECTED_PROPERTY_CANDIDATES,
+    DEFAULT_CLOUD_APP_ID,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MONITOR_PROPERTY,
+    POWER_WAKE_PARAMS,
     RECIPE_STORE_SAVE_DELAY,
     RECIPE_STORE_VERSION,
     RESPONSE_PROPERTY_CANDIDATES,
 )
 from .model_profiles import profile_for
+from .monitor import parse_monitor_b64
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,34 +56,20 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.client = client
         self.device = device
-        # Per-model behaviour (synthesize vs learn-and-replay). All model-specific
-        # differences live in model_profiles.py; this object is the single source.
         self.profile = profile_for(device.oem_model)
         self.command_property: str | None = None
         self.response_property: str | None = None
-        # --- Command sniffer state ---------------------------------------
-        # Values WE wrote, so a command echoed back by the cloud is not
-        # mis-attributed to the official app. Bounded; only recent writes matter.
+        self.connected_property: str | None = None
+        self._cloud_app_id: int = DEFAULT_CLOUD_APP_ID
+        self._last_connect_at: float = 0.0
         self._sent_values: deque[str] = deque(maxlen=32)
-        # Last datapoint marker seen per channel, to detect *new* writes only.
         self._last_cmd_marker: Any = None
         self._last_resp_marker: Any = None
-        # Last decoded frames, surfaced via the diagnostic sensor.
         self.last_captured_command: dict | None = None
         self.last_machine_response: dict | None = None
-        # Eletta (DL-striker-cb) frame replay: the Soul-style fixed recipe is
-        # ignored by Eletta machines, which expect a variable-length recipe block
-        # (and a different "start" action byte, plus a device signature). Rather
-        # than rebuild all that, we learn the exact frame the official app sends
-        # per beverage (sniffed below) and replay it verbatim with only a fresh
-        # timestamp. Keyed by beverage_id; start and stop frames kept separately.
-        # Persisted to disk so the learning survives Home Assistant restarts.
+        self.monitor: dict[str, Any] = {}
         self.learned_start_frames: dict[int, str] = {}
         self.learned_stop_frames: dict[int, str] = {}
-        # Power-on (wake) is a single frame. The official app appends a 4-byte
-        # device signature the integration's synthesized wake lacks - which is
-        # why a built wake is ignored while a verbatim app replay works - so we
-        # learn and replay the app's power-on frame too.
         self.learned_wake_frame: str | None = None
         self._store: Store = Store(
             hass, RECIPE_STORE_VERSION, f"{DOMAIN}_recipes_{device.dsn}"
@@ -91,25 +83,37 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.command_property = self._detect_property(
                     props, COMMAND_PROPERTY_CANDIDATES, "command"
                 )
-                # Refine the model profile now the live command channel is known
-                # (only matters for an unrecognised oem_model; idempotent for the
-                # PrimaDonna Soul / Eletta Explore which match by oem_model).
                 self.profile = profile_for(self.device.oem_model, self.command_property)
             if self.response_property is None:
-                # Optional: absence is fine, the sniffer just skips responses.
                 self.response_property = self._detect_property(
                     props, RESPONSE_PROPERTY_CANDIDATES, "response", required=False
                 )
+            if self.connected_property is None and self.profile.uses_cloud_session:
+                self.connected_property = self._detect_property(
+                    props, CONNECTED_PROPERTY_CANDIDATES, "connected", required=False
+                )
+            self._update_monitor(props)
             self._sniff_app_traffic(props)
-            # Refresh device connection status
             devices = await self.client.async_get_devices()
             for d in devices:
                 if d.dsn == self.device.dsn:
                     self.device = d
                     break
+            props["_monitor"] = self.monitor
             return props
         except Exception as err:
             raise UpdateFailed(f"Error fetching Delonghi data: {err}") from err
+
+    def _update_monitor(self, props: dict[str, Any]) -> None:
+        prop = props.get(MONITOR_PROPERTY)
+        if not isinstance(prop, dict):
+            self.monitor = {}
+            return
+        value = prop.get("value")
+        if isinstance(value, str) and value.strip():
+            self.monitor = parse_monitor_b64(value)
+        else:
+            self.monitor = {}
 
     def _detect_property(
         self,
@@ -118,11 +122,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         kind: str,
         required: bool = True,
     ) -> str | None:
-        """Pick the right property name for this model from a candidate list.
-
-        Different DeLonghi models expose the binary channels under different
-        names (e.g. ``data_request`` on Soul vs ``app_data_request`` on Eletta).
-        """
         for candidate in candidates:
             if candidate in props:
                 _LOGGER.info(
@@ -135,7 +134,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return candidate
         if not required:
             _LOGGER.debug(
-                "No %s property among %s for dsn=%s (sniffer will skip it)",
+                "No %s property among %s for dsn=%s",
                 kind,
                 candidates,
                 self.device.dsn,
@@ -147,24 +146,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "Please open an issue with debug logs."
         )
 
-    # ------------------------------------------------------------------ #
-    # Command sniffer
-    #
-    # We already fetch every property each poll, so watching the command and
-    # response channels is free (no extra API calls). When the value changes to
-    # something this integration did not write, it was written by the official
-    # Coffee Link app - i.e. the ground-truth bytes we need to compare against.
-    # ------------------------------------------------------------------ #
-
     def _sniff_app_traffic(self, props: dict[str, Any]) -> None:
-        # The sniffer is a diagnostic; it must never break the data update and
-        # take the device unavailable. Swallow and log any unexpected error.
         try:
             if self.command_property:
                 self._capture_channel(props, self.command_property, channel="command")
             if self.response_property:
                 self._capture_channel(props, self.response_property, channel="response")
-        except Exception:  # noqa: BLE001 - diagnostic must not break polling
+        except Exception:  # noqa: BLE001
             _LOGGER.debug("Command sniffer failed (non-fatal)", exc_info=True)
 
     def _capture_channel(
@@ -176,20 +164,15 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         value = prop.get("value")
         if not isinstance(value, str) or not value.strip():
             return
-        # Ayla wraps string datapoints in whitespace (e.g. a trailing newline);
-        # normalise so attribution against _sent_values and the decode succeed.
         value = value.strip()
-        # Prefer the cloud's datapoint timestamp to detect a new write (it also
-        # catches the app re-sending byte-identical bytes); fall back to value.
         marker = prop.get("data_updated_at", value)
         marker_attr = "_last_cmd_marker" if channel == "command" else "_last_resp_marker"
         previous = getattr(self, marker_attr)
         if marker == previous:
-            return  # nothing new this poll
+            return
         first_observation = previous is None
         setattr(self, marker_attr, marker)
         if first_observation:
-            # The value already present at startup is not a fresh capture.
             return
 
         decoded = decode_command(value)
@@ -208,34 +191,54 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if origin == "app":
                 _LOGGER.warning(
                     "CAPTURED app->machine command on %s (dsn=%s): %s | %s",
-                    prop_name, self.device.dsn, value, summary,
+                    prop_name,
+                    self.device.dsn,
+                    value,
+                    summary,
                 )
             else:
                 _LOGGER.debug(
                     "Observed own command echoed on %s: %s | %s",
-                    prop_name, value, summary,
+                    prop_name,
+                    value,
+                    summary,
                 )
         else:
             decoded["captured_at"] = prop.get("data_updated_at")
             self.last_machine_response = decoded
             _LOGGER.debug(
                 "Machine->app response on %s (dsn=%s): %s | %s",
-                prop_name, self.device.dsn, value, summarize_decoded(decoded),
+                prop_name,
+                self.device.dsn,
+                value,
+                summarize_decoded(decoded),
             )
 
     def _record_sent(self, value: str) -> None:
-        """Remember a value we wrote so the sniffer won't flag it as app traffic."""
         self._sent_values.append(value)
 
-    async def async_load_learned(self) -> None:
-        """Load learned Eletta frames persisted from previous runs.
+    async def _ensure_cloud_session(self) -> None:
+        if not self.profile.uses_cloud_session:
+            return
+        if not self.connected_property:
+            _LOGGER.debug(
+                "No connected property for dsn=%s; skipping cloud session setup",
+                self.device.dsn,
+            )
+            return
+        self._cloud_app_id, self._last_connect_at = (
+            await self.client.async_ensure_device_connected(
+                self.device.dsn,
+                self.connected_property,
+                self._cloud_app_id,
+                self._last_connect_at,
+            )
+        )
 
-        Called once at setup so a restart does not lose the per-beverage frames
-        the integration learned from the official app.
-        """
+    async def async_load_learned(self) -> None:
         try:
             data = await self._store.async_load()
-        except Exception:  # noqa: BLE001 - persistence must not block setup
+        except Exception:  # noqa: BLE001
             _LOGGER.debug("Could not load learned recipes (non-fatal)", exc_info=True)
             return
         if not data:
@@ -245,6 +248,14 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.learned_stop_frames,
             self.learned_wake_frame,
         ) = deserialize_learned_frames(data)
+        if self.learned_wake_frame and not is_valid_wake_frame(self.learned_wake_frame):
+            _LOGGER.warning(
+                "Discarding invalid learned wake frame for dsn=%s (expected params "
+                "%s, got refresh or corrupt data)",
+                self.device.dsn,
+                POWER_WAKE_PARAMS.hex(" "),
+            )
+            self.learned_wake_frame = None
         total = (
             len(self.learned_start_frames)
             + len(self.learned_stop_frames)
@@ -256,12 +267,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     def log_recipe_datapoints(self) -> None:
-        """Dump the machine's stored recipe datapoints to the log (read-only).
-
-        Diagnostic for the "zero-touch" work: lets a tester surface the recipes
-        the machine stores so the recipe->command mapping can be confirmed.
-        Sends nothing to the machine.
-        """
         if not self.data:
             _LOGGER.warning("Recipe dump requested but no data fetched yet.")
             return
@@ -275,23 +280,11 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _learned_storage_data(self) -> dict:
-        """Callback for the debounced Store save."""
         return serialize_learned_frames(
             self.learned_start_frames, self.learned_stop_frames, self.learned_wake_frame
         )
 
     def _maybe_learn_frame(self, decoded: dict) -> None:
-        """Learn the exact frame the official app sent for a beverage.
-
-        Models that ``learns_from_app`` ignore the Soul-style fixed recipe;
-        replaying the app's own frame verbatim is the reliable way to reproduce a
-        beverage (quantity / intensity / milk, the right start-action byte, and
-        the device signature are all preserved). Stop frames (action 0x02) are
-        kept separately from start frames so a captured stop never gets replayed
-        for a start press. The power-on (wake) frame is learned too - the app
-        appends a device signature a synthesized wake lacks. New/changed frames
-        are persisted (debounced) so they survive restarts.
-        """
         if not self.profile.learns_from_app:
             return
         raw_b64 = decoded.get("raw_b64")
@@ -300,6 +293,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ftype = decoded.get("type")
 
         if ftype == "power":
+            if decoded.get("params") != POWER_WAKE_PARAMS.hex(" "):
+                _LOGGER.debug(
+                    "Ignoring power frame params=%s (not wake %s)",
+                    decoded.get("params"),
+                    POWER_WAKE_PARAMS.hex(" "),
+                )
+                return
             if self.learned_wake_frame != raw_b64:
                 self.learned_wake_frame = raw_b64
                 _LOGGER.info("Learned %s wake/power-on frame: %s", self.profile.key, raw_b64)
@@ -337,16 +337,18 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     async def async_send_beverage(self, beverage_id: int, action: int) -> None:
-        """Build + send a beverage command via the resolved command property."""
         from .command_builder import build_and_encode
 
         table = self.learned_stop_frames if action == ACTION_STOP else self.learned_start_frames
         learned = table.get(beverage_id)
-        value = self.profile.beverage_value(beverage_id, action, learned)
+        await self._ensure_cloud_session()
+        value = self.profile.beverage_value(
+            beverage_id,
+            action,
+            learned,
+            cloud_app_id=self._cloud_app_id,
+        )
         if value is None:
-            # The profile needs a learned frame we don't have yet: send a
-            # best-effort synthesized frame so the call doesn't fail, and tell
-            # the user how to teach the integration the right bytes.
             value = build_and_encode(beverage_id, action)
             _LOGGER.warning(
                 "No learned %s frame for beverage 0x%02x yet (%s). Trigger this "
@@ -368,34 +370,39 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._record_sent(value)
         prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
-        _LOGGER.info(
-            "Sending beverage cmd via %s: bev_id=0x%02x action=%d value=%s",
-            prop,
-            beverage_id,
-            action,
-            value,
-        )
         await self.client.async_set_property_value(self.device.dsn, prop, value)
         await self.async_request_refresh()
 
     async def async_send_wake(self) -> None:
-        """Send the WAKE / power-on command to bring the machine out of standby."""
-        from .command_builder import build_wake_encoded
-
-        value = self.profile.wake_value(self.learned_wake_frame)
+        await self._ensure_cloud_session()
+        value = self.profile.wake_value(
+            self.learned_wake_frame,
+            cloud_app_id=self._cloud_app_id,
+        )
         if value is None:
-            # The profile needs a learned wake frame we don't have yet.
-            value = build_wake_encoded()
-            _LOGGER.warning(
-                "No learned wake frame for this %s yet. Power the machine on once "
-                "from the official Coffee Link app so Home Assistant can capture "
-                "and replay it. Sending a best-effort synthesized wake meanwhile "
-                "(the machine will likely ignore it - it lacks the device "
-                "signature the app appends).",
-                self.profile.label,
-            )
+            _LOGGER.error("Profile %s returned no wake command", self.profile.key)
+            return
         self._record_sent(value)
         prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
         _LOGGER.info("Sending WAKE cmd via %s: %s", prop, value)
+        await self.client.async_set_property_value(self.device.dsn, prop, value)
+        await self.async_request_refresh()
+
+    async def async_send_standby(self) -> None:
+        await self._ensure_cloud_session()
+        value = self.profile.standby_value(cloud_app_id=self._cloud_app_id)
+        if value is None:
+            _LOGGER.error("Profile %s does not support standby", self.profile.key)
+            return
+        self._record_sent(value)
+        prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
+        _LOGGER.info("Sending STANDBY cmd via %s: %s", prop, value)
+        await self.client.async_set_property_value(self.device.dsn, prop, value)
+        await self.async_request_refresh()
+
+    async def async_send_raw(self, value: str) -> None:
+        await self._ensure_cloud_session()
+        self._record_sent(value)
+        prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
         await self.client.async_set_property_value(self.device.dsn, prop, value)
         await self.async_request_refresh()
