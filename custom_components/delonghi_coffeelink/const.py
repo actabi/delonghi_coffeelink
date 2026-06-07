@@ -27,6 +27,15 @@ COMMAND_PROPERTY_CANDIDATES = ["data_request", "app_data_request"]
 RESPONSE_PROPERTY_CANDIDATES = ["data_response", "app_data_response"]
 CONNECTED_PROPERTY_CANDIDATES = ["device_connected", "app_device_connected"]
 
+# Stable HA client id for app_device_connected (DlghIoT uses 0xC0FFEE11).
+# Used ONLY for session registration and property app_id checks.
+# NOT the 4-byte device signature appended to learned command frames.
+INTEGRATION_CLOUD_APP_ID = 0xC0FFEE11
+
+APP_ID_PROPERTY = "app_id"  # machine property: current session holder
+CONNECT_REFRESH_INTERVAL = 240  # refresh before 4*60s (device timeout ~300s)
+CONNECT_SETTLE_DELAY = 4  # sleep after POST connect (background tasks only)
+
 # Config
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"

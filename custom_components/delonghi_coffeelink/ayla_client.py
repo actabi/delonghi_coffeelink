@@ -190,3 +190,43 @@ class DelonghiAylaClient:
                     f"set_property {property_name} failed (HTTP {resp.status}): {text[:300]}"
                 )
             return await resp.json()
+
+    async def async_get_property(self, dsn: str, property_name: str) -> dict[str, Any]:
+        """Fetch a single device property (fallback when coordinator.data is empty)."""
+        await self.async_ensure_auth()
+        url = f"{AYLA_EU_ADS_URL}/apiv1/dsns/{dsn}/properties/{property_name}.json"
+        async with self._session.get(url, headers=self._auth_headers()) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise CloudError(
+                    f"get_property {property_name} failed (HTTP {resp.status}): {text[:300]}"
+                )
+            data = await resp.json()
+        prop = data.get("property")
+        if not isinstance(prop, dict):
+            raise CloudError(f"get_property {property_name}: unexpected response {data!r}")
+        return prop
+
+    async def async_post_cloud_session(
+        self, dsn: str, connected_property: str, integration_app_id: int
+    ) -> dict[str, Any]:
+        """Register a cloud app session (app_device_connected / device_connected).
+
+        Payload: base64(timestamp_4bytes + signed_app_id_4bytes), per DlghIoT.
+        """
+        now_s = int(time.time())
+        payload = base64.b64encode(
+            now_s.to_bytes(4, "big", signed=False)
+            + integration_app_id_to_bytes(integration_app_id)
+        ).decode("utf-8")
+        return await self.async_set_property_value(dsn, connected_property, payload)
+
+
+def normalize_signed_app_id(app_id: int) -> int:
+    """Convert an app id to signed int32 (matches machine property decimal form)."""
+    return ((app_id & 0xFFFFFFFF) ^ 0x80000000) - 0x80000000
+
+
+def integration_app_id_to_bytes(app_id: int) -> bytes:
+    """Encode app id as signed int32 big-endian (DlghIoT convention)."""
+    return normalize_signed_app_id(app_id).to_bytes(4, "big", signed=True)

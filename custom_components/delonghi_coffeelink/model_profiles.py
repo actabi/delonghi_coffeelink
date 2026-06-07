@@ -36,6 +36,9 @@ class ModelProfile:
     # them verbatim instead of synthesizing them (reliable on models whose
     # command bytes differ from the reference Soul).
     learns_from_app = False
+    # ECAM models (Eletta / app_* channel) require a cloud session via
+    # app_device_connected before commands are relayed; Soul does not.
+    uses_cloud_session = False
 
     @classmethod
     def matches(cls, oem_model: str) -> bool:
@@ -98,6 +101,7 @@ class ElettaProfile(ModelProfile):
     label = "Eletta Explore (DL-striker-cb)"
     command_property = "app_data_request"
     learns_from_app = True
+    uses_cloud_session = True
 
     @classmethod
     def matches(cls, oem_model: str) -> bool:
