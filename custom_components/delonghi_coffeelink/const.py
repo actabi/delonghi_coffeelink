@@ -35,6 +35,13 @@ INTEGRATION_CLOUD_APP_ID = 0xC0FFEE11
 APP_ID_PROPERTY = "app_id"  # machine property: current session holder
 CONNECT_REFRESH_INTERVAL = 240  # refresh before 4*60s (device timeout ~300s)
 CONNECT_SETTLE_DELAY = 4  # sleep after POST connect (background tasks only)
+CONNECT_CONFIRM_TIMEOUT = 300  # poll app_id after POST (Eletta; can exceed 180s on bad cloud days)
+CONNECT_CONFIRM_POLL_INTERVAL = 1  # seconds between app_id polls during confirm
+
+# Ayla HTTP resilience (502/503/504 gateway timeouts seen on ads-eu.aylanetworks.com).
+CLOUD_HTTP_RETRY_COUNT = 2
+CLOUD_HTTP_RETRY_BACKOFF = 1.5  # seconds; multiplied by attempt index
+CLOUD_TRANSIENT_HTTP_CODES = frozenset({429, 502, 503, 504})
 
 # Config
 CONF_EMAIL = "email"
@@ -67,6 +74,8 @@ POWER_WAKE_PARAMS = bytes([0x02, 0x01])  # observed wake command payload
 # Standby (power off) payload - reported on Eletta (issue #1) and validated
 # live on the reference PrimaDonna Soul (machine powered off, 2026-06-07).
 POWER_STANDBY_PARAMS = bytes([0x01, 0x01])
+# Session refresh / deep-standby nudge (DlghIoT refresh(), params 03 02, CRC 5640).
+POWER_SESSION_REFRESH_PARAMS = bytes([0x03, 0x02])
 
 # Machine monitor (d302_monitor_machine) - operational state published by the
 # machine. Status codes from the DlghIoT client (framagit.org/mattgk/dlghiot),

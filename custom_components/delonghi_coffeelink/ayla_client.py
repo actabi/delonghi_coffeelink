@@ -5,6 +5,7 @@ Auth chain: Gigya email/password login -> Gigya JWT (HMAC-SHA1 signed request)
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -20,8 +21,12 @@ import aiohttp
 from .const import (
     APP_ID,
     APP_SECRET,
+    APP_ID_PROPERTY,
     AYLA_EU_ADS_URL,
     AYLA_EU_USER_URL,
+    CLOUD_HTTP_RETRY_BACKOFF,
+    CLOUD_HTTP_RETRY_COUNT,
+    CLOUD_TRANSIENT_HTTP_CODES,
     GIGYA_API_KEY,
     GIGYA_BASE_URL,
 )
@@ -35,6 +40,10 @@ class AuthError(Exception):
 
 class CloudError(Exception):
     """Raised for Ayla API errors."""
+
+    def __init__(self, message: str, *, http_status: int | None = None) -> None:
+        super().__init__(message)
+        self.http_status = http_status
 
 
 @dataclass
@@ -76,11 +85,120 @@ class DelonghiAylaClient:
         if not self._access_token or time.time() > self._expires_at - 30:
             await self.async_authenticate()
 
+    def _auth_headers(self) -> dict[str, str]:
+        return {"Authorization": f"auth_token {self._access_token}"}
+
+    @staticmethod
+    def _value_hint(value: Any) -> str:
+        if isinstance(value, str):
+            return f"len={len(value)}"
+        return type(value).__name__
+
+    def _log_http(
+        self,
+        method: str,
+        url: str,
+        status: int,
+        elapsed_ms: float,
+        *,
+        detail: str = "",
+    ) -> None:
+        msg = "%s %s -> HTTP %d (%.0fms)%s"
+        args: tuple[Any, ...] = (method, url, status, elapsed_ms, detail)
+        if status >= 400:
+            _LOGGER.warning(msg, *args)
+        else:
+            _LOGGER.debug(msg, *args)
+
+    async def _request_json(
+        self,
+        method: str,
+        url: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        data: dict[str, str] | None = None,
+        ok_status: frozenset[int] | set[int] | None = None,
+        op: str = "",
+    ) -> Any:
+        """HTTP request with transient retry (Eletta session paths only)."""
+        await self.async_ensure_auth()
+        if ok_status is None:
+            ok_status = frozenset({200, 201})
+        last_error: CloudError | None = None
+        for attempt in range(CLOUD_HTTP_RETRY_COUNT + 1):
+            started = time.monotonic()
+            try:
+                async with self._session.request(
+                    method,
+                    url,
+                    headers=self._auth_headers(),
+                    json=json_body,
+                    data=data,
+                ) as resp:
+                    elapsed_ms = (time.monotonic() - started) * 1000
+                    text = await resp.text()
+                    detail = f" [{op}]" if op else ""
+                    if json_body and "datapoint" in json_body:
+                        prop_val = json_body["datapoint"].get("value")
+                        detail += f" value={self._value_hint(prop_val)}"
+                    self._log_http(method, url, resp.status, elapsed_ms, detail=detail)
+
+                    if resp.status in CLOUD_TRANSIENT_HTTP_CODES and attempt < CLOUD_HTTP_RETRY_COUNT:
+                        _LOGGER.warning(
+                            "Ayla transient HTTP %d on %s %s; retry %d/%d in %.1fs",
+                            resp.status,
+                            method,
+                            op or url.rsplit("/", 1)[-1],
+                            attempt + 1,
+                            CLOUD_HTTP_RETRY_COUNT,
+                            CLOUD_HTTP_RETRY_BACKOFF * (attempt + 1),
+                        )
+                        await asyncio.sleep(CLOUD_HTTP_RETRY_BACKOFF * (attempt + 1))
+                        continue
+
+                    if resp.status not in ok_status:
+                        raise CloudError(
+                            f"{op or method} failed (HTTP {resp.status}): {text[:300]}",
+                            http_status=resp.status,
+                        )
+
+                    if not text.strip():
+                        return None
+                    try:
+                        return json.loads(text)
+                    except json.JSONDecodeError as err:
+                        raise CloudError(
+                            f"{op or method}: expected JSON, got {resp.content_type!r}: "
+                            f"{text[:200]}",
+                            http_status=resp.status,
+                        ) from err
+            except aiohttp.ClientError as err:
+                elapsed_ms = (time.monotonic() - started) * 1000
+                last_error = CloudError(
+                    f"{op or method} network error after {elapsed_ms:.0f}ms: {err}"
+                )
+                if attempt < CLOUD_HTTP_RETRY_COUNT:
+                    _LOGGER.warning(
+                        "Ayla network error on %s %s; retry %d/%d: %s",
+                        method,
+                        op or url.rsplit("/", 1)[-1],
+                        attempt + 1,
+                        CLOUD_HTTP_RETRY_COUNT,
+                        err,
+                    )
+                    await asyncio.sleep(CLOUD_HTTP_RETRY_BACKOFF * (attempt + 1))
+                    continue
+                raise last_error from err
+
+        if last_error:
+            raise last_error
+        raise CloudError(f"{op or method} failed after retries")
+
     async def _gigya_login_and_jwt(self) -> str:
         """Login to Gigya + get JWT via signed request (HMAC-SHA1 with sessionSecret)."""
-        # 1. accounts.login
+        login_url = f"{GIGYA_BASE_URL}/accounts.login"
         async with self._session.post(
-            f"{GIGYA_BASE_URL}/accounts.login",
+            login_url,
             data={
                 "apiKey": GIGYA_API_KEY,
                 "loginID": self._email,
@@ -96,7 +214,6 @@ class DelonghiAylaClient:
         session_token = body["sessionInfo"]["sessionToken"]
         session_secret = body["sessionInfo"]["sessionSecret"]
 
-        # 2. accounts.getJWT with HMAC-SHA1 signature
         timestamp = str(int(time.time()))
         nonce = f"{timestamp}_1"
         url = f"{GIGYA_BASE_URL}/accounts.getJWT"
@@ -135,9 +252,6 @@ class DelonghiAylaClient:
         self._access_token = body["access_token"]
         self._refresh_token = body.get("refresh_token")
         self._expires_at = time.time() + body.get("expires_in", 3600)
-
-    def _auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"auth_token {self._access_token}"}
 
     async def async_get_devices(self) -> list[AylaDevice]:
         """List all Ayla devices tied to this account."""
@@ -207,6 +321,29 @@ class DelonghiAylaClient:
             raise CloudError(f"get_property {property_name}: unexpected response {data!r}")
         return prop
 
+    async def async_get_property_resilient(
+        self, dsn: str, property_name: str
+    ) -> dict[str, Any]:
+        """Eletta-only: GET with retry (confirm loop live app_id polling)."""
+        url = f"{AYLA_EU_ADS_URL}/apiv1/dsns/{dsn}/properties/{property_name}.json"
+        data = await self._request_json(
+            "GET",
+            url,
+            ok_status=frozenset({200}),
+            op=f"get {property_name} dsn={dsn}",
+        )
+        prop = data.get("property")
+        if not isinstance(prop, dict):
+            raise CloudError(f"get_property {property_name}: unexpected response {data!r}")
+        raw = prop.get("value")
+        _LOGGER.debug(
+            "Property %s dsn=%s value=%s",
+            property_name,
+            dsn,
+            raw if property_name == APP_ID_PROPERTY else self._value_hint(raw),
+        )
+        return prop
+
     async def async_post_cloud_session(
         self, dsn: str, connected_property: str, integration_app_id: int
     ) -> dict[str, Any]:
@@ -219,7 +356,26 @@ class DelonghiAylaClient:
             now_s.to_bytes(4, "big", signed=False)
             + integration_app_id_to_bytes(integration_app_id)
         ).decode("utf-8")
-        return await self.async_set_property_value(dsn, connected_property, payload)
+        _LOGGER.info(
+            "POST cloud session connect dsn=%s property=%s app_id=%d (0x%08x) payload_len=%d",
+            dsn,
+            connected_property,
+            integration_app_id,
+            integration_app_id & 0xFFFFFFFF,
+            len(payload),
+        )
+        url = (
+            f"{AYLA_EU_ADS_URL}/apiv1/dsns/{dsn}/properties/"
+            f"{connected_property}/datapoints.json"
+        )
+        result = await self._request_json(
+            "POST",
+            url,
+            json_body={"datapoint": {"value": payload}},
+            ok_status=frozenset({200, 201}),
+            op=f"set {connected_property} dsn={dsn}",
+        )
+        return result or {}
 
 
 def normalize_signed_app_id(app_id: int) -> int:

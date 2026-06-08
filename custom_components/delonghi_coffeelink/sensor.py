@@ -12,8 +12,18 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import COUNTER_SENSORS, DOMAIN, INFO_SENSORS, MANUFACTURER
+from .ayla_client import normalize_signed_app_id
+from .const import (
+    APP_ID_PROPERTY,
+    COUNTER_SENSORS,
+    DOMAIN,
+    INFO_SENSORS,
+    INTEGRATION_CLOUD_APP_ID,
+    MANUFACTURER,
+)
 from .coordinator import DelonghiCoordinator
+
+_HA_CLOUD_SESSION_APP_ID = normalize_signed_app_id(INTEGRATION_CLOUD_APP_ID)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +72,8 @@ async def async_setup_entry(
         entities.append(DelonghiConnectionSensor(coord))
         entities.append(DelonghiMachineStatusSensor(coord))
         entities.append(DelonghiLastCommandSensor(coord))
+        if coord.profile.uses_cloud_session and APP_ID_PROPERTY in (coord.data or {}):
+            entities.append(DelonghiCloudSessionAppIdSensor(coord))
     async_add_entities(entities)
 
 
@@ -197,6 +209,55 @@ class DelonghiMachineStatusSensor(_Base):
         for key in ("status", "progress", "action", "accessory", "error"):
             if key in monitor:
                 attrs[key] = monitor[key]
+        return attrs
+
+
+def _parse_cloud_session_app_id(raw: Any) -> int | None:
+    if raw is None:
+        return None
+    try:
+        return normalize_signed_app_id(int(str(raw).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _cloud_session_holder(app_id: int | None) -> str:
+    if app_id is None:
+        return "unknown"
+    if app_id == 0:
+        return "free"
+    if app_id == _HA_CLOUD_SESSION_APP_ID:
+        return "ha"
+    return "foreign"
+
+
+class DelonghiCloudSessionAppIdSensor(_Base):
+    """Diagnostic: machine property ``app_id`` (current cloud session holder).
+
+    Unlike ``Last Connected`` (``app_device_connected``), this is the slot the
+    official Coffee Link app checks before connecting — not the last connect POST.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(
+            coord, "cloud_session_app_id", "Cloud Session app_id", "mdi:key-chain"
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        prop = (self.coordinator.data or {}).get(APP_ID_PROPERTY)
+        if not isinstance(prop, dict):
+            return None
+        return _parse_cloud_session_app_id(prop.get("value"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        app_id = self.native_value
+        attrs: dict[str, Any] = {"holder": _cloud_session_holder(app_id)}
+        if app_id is not None:
+            attrs["app_id_hex"] = f"{app_id & 0xFFFFFFFF:08x}"
         return attrs
 
 

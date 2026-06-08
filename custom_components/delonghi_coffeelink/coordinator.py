@@ -16,17 +16,26 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_signed_app_id
 from .command_builder import (
     builder_structural_b64,
+    build_session_refresh_encoded,
+    build_standby_encoded,
+    build_standby_with_session_tail_encoded,
+    build_wake_encoded,
+    build_wake_with_session_tail_encoded,
     decode_command,
     deserialize_learned_frames,
     is_wake_power_frame,
     recipe_dump_lines,
+    replay_with_timestamp,
     serialize_learned_frames,
     summarize_decoded,
+    validate_replayed_wake_frame,
 )
 from .const import (
     ACTION_STOP,
     APP_ID_PROPERTY,
     COMMAND_PROPERTY_CANDIDATES,
+    CONNECT_CONFIRM_POLL_INTERVAL,
+    CONNECT_CONFIRM_TIMEOUT,
     CONNECT_REFRESH_INTERVAL,
     CONNECT_SETTLE_DELAY,
     CONNECTED_PROPERTY_CANDIDATES,
@@ -76,8 +85,11 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_connect_at: float = 0
         self._session_confirmed = False
         self._session_connect_lock = asyncio.Lock()
-        self._session_refresh_task: asyncio.Task[None] | None = None
         self._session_cold_task: asyncio.Task[None] | None = None
+        if self.profile.uses_cloud_session:
+            self._last_seen_app_id: int | None = None
+        else:
+            self._session_refresh_task: asyncio.Task[None] | None = None
         # --- Command sniffer state ---------------------------------------
         # Values WE wrote, so a command echoed back by the cloud is not
         # mis-attributed to the official app. Bounded; only recent writes matter.
@@ -109,6 +121,16 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass, RECIPE_STORE_VERSION, f"{DOMAIN}_recipes_{device.dsn}"
         )
 
+    async def async_shutdown(self) -> None:
+        """Cancel in-flight session work and reset session state on unload."""
+        if self._session_cold_task and not self._session_cold_task.done():
+            self._session_cold_task.cancel()
+        self._session_cold_task = None
+        self._last_connect_at = 0
+        if self._integration_app_id != self._default_app_id:
+            self._integration_app_id = self._default_app_id
+        await super().async_shutdown()
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all properties + refresh device meta."""
         try:
@@ -133,7 +155,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._sniff_app_traffic(props)
             self._update_monitor(props)
             self._update_session_from_props(props)
-            self._maybe_schedule_session_refresh()
             # Refresh device connection status
             devices = await self.client.async_get_devices()
             for d in devices:
@@ -141,6 +162,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.device = d
                     break
             return props
+        except CloudError as err:
+            raise UpdateFailed(f"Ayla cloud error: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Error fetching Delonghi data: {err}") from err
 
@@ -197,9 +220,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Cloud session (app_device_connected)
     #
     # ECAM models require a registered cloud session before commands are
-    # relayed. Logic follows DlghIoT connect(): 4 min cache, adopt foreign
-    # app_id, POST + settle delay on cold connect. Cold path runs in a
-    # background task so button/service handlers return immediately.
+    # relayed. Logic follows DlghIoT connect(): adopt foreign app_id, POST +
+    # settle delay on cold connect only (on-demand before commands). Poll does
+    # NOT register a session — that would block the official Coffee Link app
+    # while HA is idle. After an HA command the machine keeps app_id for ~300 s
+    # (protocol limit); Coffee Link may be temporarily blocked until timeout.
+    # Cold path runs in a background task so button/service handlers return
+    # immediately.
     # ------------------------------------------------------------------ #
 
     def _parse_app_id_value(self, raw: Any) -> int | None:
@@ -216,22 +243,111 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._parse_app_id_value(prop.get("value"))
         return None
 
-    async def _read_app_id(self) -> int | None:
-        if self.data:
+    async def _read_app_id(self, *, live: bool = False) -> int | None:
+        if not live and self.data:
             app_id = self._app_id_from_props(self.data)
             if app_id is not None:
                 return app_id
+        app_id, _ok = await self._fetch_app_id_live()
+        return app_id
+
+    async def _fetch_app_id_live(self) -> tuple[int | None, bool]:
+        """Direct GET app_id. Returns (value, fetch_ok); fetch_ok=False on cloud error."""
         try:
-            prop = await self.client.async_get_property(self.device.dsn, APP_ID_PROPERTY)
-        except CloudError:
-            _LOGGER.debug("Could not fetch %s (non-fatal)", APP_ID_PROPERTY, exc_info=True)
-            return None
-        return self._parse_app_id_value(prop.get("value"))
+            prop = await self.client.async_get_property_resilient(
+                self.device.dsn, APP_ID_PROPERTY
+            )
+        except CloudError as err:
+            status = getattr(err, "http_status", None)
+            _LOGGER.warning(
+                "Live app_id fetch failed for dsn=%s (http=%s): %s",
+                self.device.dsn,
+                status,
+                err,
+            )
+            return None, False
+        return self._parse_app_id_value(prop.get("value")), True
+
+    async def _wait_for_session_confirmed(self) -> bool:
+        """Poll app_id until it matches our integration id (DlghIoT connect loop)."""
+        started = time.time()
+        last_progress = started
+        poll_count = 0
+        cloud_errors = 0
+        _LOGGER.debug(
+            "Waiting for cloud session confirm on dsn=%s (timeout=%ds, want app_id=%d)",
+            self.device.dsn,
+            CONNECT_CONFIRM_TIMEOUT,
+            self._integration_app_id,
+        )
+        while time.time() - started < CONNECT_CONFIRM_TIMEOUT:
+            poll_count += 1
+            app_id, fetch_ok = await self._fetch_app_id_live()
+            if not fetch_ok:
+                cloud_errors += 1
+            elif app_id == self._integration_app_id:
+                elapsed = time.time() - started
+                self._session_confirmed = True
+                _LOGGER.info(
+                    "Cloud session confirmed app_id=%d (0x%08x) on dsn=%s after %.1fs "
+                    "(polls=%d, cloud_errors=%d)",
+                    app_id,
+                    app_id & 0xFFFFFFFF,
+                    self.device.dsn,
+                    elapsed,
+                    poll_count,
+                    cloud_errors,
+                )
+                return True
+            await asyncio.sleep(CONNECT_CONFIRM_POLL_INTERVAL)
+            now = time.time()
+            if now - last_progress >= 15:
+                _LOGGER.debug(
+                    "Still waiting for cloud session confirm on dsn=%s (%.0fs/%ds, "
+                    "app_id=%s, want=%d, polls=%d, cloud_errors=%d)",
+                    self.device.dsn,
+                    now - started,
+                    CONNECT_CONFIRM_TIMEOUT,
+                    app_id if fetch_ok else "fetch_failed",
+                    self._integration_app_id,
+                    poll_count,
+                    cloud_errors,
+                )
+                last_progress = now
+        last_app_id, last_ok = await self._fetch_app_id_live()
+        _LOGGER.warning(
+            "Connect POST sent but app_id not confirmed after %ds on dsn=%s "
+            "(last app_id=%s, want=%d, polls=%d, cloud_errors=%d)",
+            CONNECT_CONFIRM_TIMEOUT,
+            self.device.dsn,
+            last_app_id if last_ok else "fetch_failed",
+            self._integration_app_id,
+            poll_count,
+            cloud_errors,
+        )
+        self._session_confirmed = False
+        return False
 
     def _update_session_from_props(self, props: dict[str, Any]) -> None:
         """Parse app_id from poll data; must never break the poll."""
         try:
             app_id = self._app_id_from_props(props)
+            if self.profile.uses_cloud_session and app_id != self._last_seen_app_id:
+                if app_id in (None, 0):
+                    holder = "free"
+                elif app_id == self._default_app_id:
+                    holder = "ha"
+                else:
+                    holder = "foreign"
+                unsigned = (app_id or 0) & 0xFFFFFFFF
+                _LOGGER.debug(
+                    "Cloud session app_id=%s (0x%08x) holder=%s dsn=%s",
+                    app_id if app_id is not None else "None",
+                    unsigned,
+                    holder,
+                    self.device.dsn,
+                )
+                self._last_seen_app_id = app_id
             self._session_confirmed = (
                 app_id is not None and app_id == self._integration_app_id
             )
@@ -248,12 +364,57 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:  # noqa: BLE001 - diagnostic must not break polling
             _LOGGER.debug("Session parse failed (non-fatal)", exc_info=True)
 
+    def _revert_foreign_app_id_if_session_clear(self, app_id: int | None) -> None:
+        """Before a cold POST, use our own cloud id when no session is held."""
+        if app_id in (None, 0) and self._integration_app_id != self._default_app_id:
+            _LOGGER.info(
+                "No cloud session holder on dsn=%s; reverting to own app_id before connect",
+                self.device.dsn,
+            )
+            self._integration_app_id = self._default_app_id
+            self._last_connect_at = 0
+
+    async def _send_property_command(self, value: str, label: str) -> None:
+        prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
+        self._record_sent(value)
+        _LOGGER.info("Sending %s via %s (len=%d)", label, prop, len(value))
+        _LOGGER.debug("Sending %s via %s: %s", label, prop, value)
+        await self.client.async_set_property_value(self.device.dsn, prop, value)
+        await self.async_request_refresh()
+
+    async def _maybe_send_session_refresh(self) -> None:
+        """DlghIoT refresh(): nudge deep standby before wake when monitor=0."""
+        if self.monitor.get("status") != 0:
+            return
+        value = build_session_refresh_encoded(self._integration_app_id)
+        _LOGGER.info(
+            "Machine in standby; sending session refresh before wake (tail app_id=%d)",
+            self._integration_app_id,
+        )
+        await self._send_property_command(value, "SESSION REFRESH")
+
+    def _wake_command_value(self) -> str:
+        """Build wake frame for ECAM models (session tail). Soul uses main inline path."""
+        value = build_wake_with_session_tail_encoded(self._integration_app_id)
+        _LOGGER.debug(
+            "Wake frame session tail app_id=%d (0x%08x)",
+            self._integration_app_id,
+            self._integration_app_id & 0xFFFFFFFF,
+        )
+        return value
+
+    def _standby_command_value(self) -> str:
+        """Build standby frame for ECAM models (session tail). Soul uses main inline path."""
+        return build_standby_with_session_tail_encoded(self._integration_app_id)
+
     def _session_is_fresh(self, app_id: int | None) -> bool:
         now = time.time()
         if self._last_connect_at + CONNECT_SETTLE_DELAY > now:
             return True
         if self._last_connect_at + CONNECT_REFRESH_INTERVAL > now:
-            if app_id not in (None, 0) and app_id != self._integration_app_id:
+            if app_id == 0:
+                return False
+            if app_id is not None and app_id != self._integration_app_id:
                 return False
             return True
         return False
@@ -267,46 +428,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._integration_app_id,
         )
 
-    async def _background_refresh_session(self) -> None:
-        try:
-            async with self._session_connect_lock:
-                await self._post_cloud_session()
-                await asyncio.sleep(CONNECT_SETTLE_DELAY)
-                self._last_connect_at = time.time()
-                _LOGGER.debug(
-                    "Background cloud session refresh completed for dsn=%s",
-                    self.device.dsn,
-                )
-        except Exception:  # noqa: BLE001 - session errors are non-fatal
-            _LOGGER.warning(
-                "Background cloud session refresh failed for dsn=%s (non-fatal)",
-                self.device.dsn,
-                exc_info=True,
-            )
-        finally:
-            self._session_refresh_task = None
-
-    def _maybe_schedule_session_refresh(self) -> None:
-        if not self.profile.uses_cloud_session or not self.connected_property:
-            return
-        if self._integration_app_id != self._default_app_id:
-            # Riding the official app's session (adopted id): never refresh it
-            # on the app's behalf - when it expires, app_id drops to 0 and
-            # _update_session_from_props reverts us to our own id.
-            return
-        app_id = self._app_id_from_props(self.data) if self.data else None
-        if self._session_is_fresh(app_id):
-            _LOGGER.debug("Background cloud session refresh skipped (fresh)")
-            return
-        if self._session_refresh_task is not None and not self._session_refresh_task.done():
-            return
-        if self._session_cold_task is not None and not self._session_cold_task.done():
-            return
-        self._session_refresh_task = self.hass.async_create_background_task(
-            self._background_refresh_session(),
-            "delonghi cloud session refresh",
-        )
-
     async def _cold_connect_then(
         self, send_fn: Callable[[], Awaitable[None]]
     ) -> None:
@@ -316,18 +437,37 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # fresh and go straight to their send. No command is ever dropped.
             async with self._session_connect_lock:
                 if not self._session_is_fresh(None):
+                    app_id = await self._read_app_id(live=True)
+                    self._revert_foreign_app_id_if_session_clear(app_id)
+                    _LOGGER.debug(
+                        "Cold cloud session connect starting dsn=%s (app_id before=%s)",
+                        self.device.dsn,
+                        app_id,
+                    )
                     await self._post_cloud_session()
                     await asyncio.sleep(CONNECT_SETTLE_DELAY)
+                    if not await self._wait_for_session_confirmed():
+                        return
                     self._last_connect_at = time.time()
+                elif not self._session_confirmed:
+                    app_id, fetch_ok = await self._fetch_app_id_live()
+                    if not fetch_ok or app_id != self._integration_app_id:
+                        _LOGGER.warning(
+                            "Warm session cache but app_id=%s (fetch_ok=%s) != %d on dsn=%s; "
+                            "skipping command",
+                            app_id,
+                            fetch_ok,
+                            self._integration_app_id,
+                            self.device.dsn,
+                        )
+                        return
             await send_fn()
-        except Exception:  # noqa: BLE001 - best-effort send after failed connect
+        except Exception:  # noqa: BLE001 - strict: do not send after connect failure
             _LOGGER.warning(
-                "Cold cloud session connect failed for dsn=%s (non-fatal); "
-                "sending command anyway",
+                "Cold cloud session connect failed for dsn=%s; command not sent",
                 self.device.dsn,
                 exc_info=True,
             )
-            await send_fn()
         finally:
             self._session_cold_task = None
 
@@ -339,14 +479,15 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         app_id = await self._read_app_id()
+        self._revert_foreign_app_id_if_session_clear(app_id)
 
         # When Coffee Link already holds the cloud session (app_id != 0 and != ours),
         # we adopt its app_id so HA commands ride the same session instead of fighting
-        # the official app. The adoption is TRANSIENT: we never refresh a foreign
+        # the official app. The adoption is TRANSIENT: we never POST a foreign
         # session, and we revert to our own id once the app releases it (see
-        # _update_session_from_props / _maybe_schedule_session_refresh). If the user
-        # opens Coffee Link while HA is commanding, behaviour is undefined (the app
-        # may hold a LAN lock); close the app first.
+        # _update_session_from_props). If the user opens Coffee Link while HA
+        # is commanding, behaviour is undefined (the app may hold a LAN lock);
+        # close the app first.
         if app_id not in (None, 0) and app_id != self._integration_app_id:
             _LOGGER.info(
                 "Adopting foreign cloud session app_id=%d for dsn=%s",
@@ -363,10 +504,19 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await send_fn()
             return
 
-        _LOGGER.info(
-            "Scheduling cloud session connect for dsn=%s; command in ~%ds",
+        if self._session_cold_task and not self._session_cold_task.done():
+            _LOGGER.warning(
+                "Cloud session connect already in progress for dsn=%s; "
+                "ignoring duplicate command (confirm timeout=%ds)",
+                self.device.dsn,
+                CONNECT_CONFIRM_TIMEOUT,
+            )
+            return
+
+        _LOGGER.debug(
+            "Scheduling cloud session connect for dsn=%s (confirm timeout=%ds)",
             self.device.dsn,
-            CONNECT_SETTLE_DELAY,
+            CONNECT_CONFIRM_TIMEOUT,
         )
         # Each command gets its own task; the connect lock serializes them, so
         # commands pressed during a cold connect are queued, not dropped.
@@ -477,15 +627,24 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # session-refresh packet (e.g. params 03 02) stored as the wake frame
         # would otherwise be replayed forever. Drop it so a real power-on from
         # the app re-teaches it.
-        if self.learned_wake_frame is not None and not is_wake_power_frame(
-            decode_command(self.learned_wake_frame)
-        ):
-            _LOGGER.warning(
-                "Discarding persisted wake frame (not a real power-on): %s. "
-                "Power the machine on once from the official app to re-learn it.",
-                self.learned_wake_frame,
-            )
-            self.learned_wake_frame = None
+        if self.learned_wake_frame is not None:
+            if self.profile.learns_from_app:
+                if not validate_replayed_wake_frame(
+                    replay_with_timestamp(self.learned_wake_frame)
+                ):
+                    _LOGGER.warning(
+                        "Discarding persisted wake frame (integrity check failed): %s. "
+                        "Power the machine on once from the official app to re-learn it.",
+                        self.learned_wake_frame,
+                    )
+                    self.learned_wake_frame = None
+            elif not is_wake_power_frame(decode_command(self.learned_wake_frame)):
+                _LOGGER.warning(
+                    "Discarding persisted wake frame (not a real power-on): %s. "
+                    "Power the machine on once from the official app to re-learn it.",
+                    self.learned_wake_frame,
+                )
+                self.learned_wake_frame = None
         total = (
             len(self.learned_start_frames)
             + len(self.learned_stop_frames)
@@ -633,25 +792,33 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_send_wake(self) -> None:
         """Send the WAKE / power-on command to bring the machine out of standby."""
-        from .command_builder import build_wake_encoded
+        if not self.profile.uses_cloud_session:
+
+            async def _do() -> None:
+                value = self.profile.wake_value(self.learned_wake_frame)
+                if value is None:
+                    value = build_wake_encoded()
+                    _LOGGER.warning(
+                        "No learned wake frame for this %s yet. Power the machine on once "
+                        "from the official Coffee Link app so Home Assistant can capture "
+                        "and replay it. Sending a best-effort synthesized wake meanwhile "
+                        "(the machine will likely ignore it - it lacks the device "
+                        "signature the app appends).",
+                        self.profile.label,
+                    )
+                self._record_sent(value)
+                prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
+                _LOGGER.info("Sending WAKE cmd via %s: %s", prop, value)
+                await self.client.async_set_property_value(self.device.dsn, prop, value)
+                await self.async_request_refresh()
+
+            await self._with_cloud_session(_do)
+            return
 
         async def _do() -> None:
-            value = self.profile.wake_value(self.learned_wake_frame)
-            if value is None:
-                value = build_wake_encoded()
-                _LOGGER.warning(
-                    "No learned wake frame for this %s yet. Power the machine on once "
-                    "from the official Coffee Link app so Home Assistant can capture "
-                    "and replay it. Sending a best-effort synthesized wake meanwhile "
-                    "(the machine will likely ignore it - it lacks the device "
-                    "signature the app appends).",
-                    self.profile.label,
-                )
-            self._record_sent(value)
-            prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
-            _LOGGER.info("Sending WAKE cmd via %s: %s", prop, value)
-            await self.client.async_set_property_value(self.device.dsn, prop, value)
-            await self.async_request_refresh()
+            await self._maybe_send_session_refresh()
+            value = self._wake_command_value()
+            await self._send_property_command(value, "WAKE cmd")
 
         await self._with_cloud_session(_do)
 
@@ -677,24 +844,31 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         capture. Validated live on the reference Soul; on learn-and-replay
         models the per-device signature from a learned frame is appended.
         """
-        from .command_builder import build_standby_encoded
+        if not self.profile.uses_cloud_session:
+
+            async def _do() -> None:
+                value = self.profile.standby_value(self._learned_device_signature())
+                if value is None:
+                    value = build_standby_encoded()
+                    _LOGGER.warning(
+                        "No learned frame for this %s yet, so the standby command is "
+                        "sent without the device signature and the machine may ignore "
+                        "it. Trigger any command once from the official Coffee Link "
+                        "app (e.g. power-on) so Home Assistant can learn the signature.",
+                        self.profile.label,
+                    )
+                self._record_sent(value)
+                prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
+                _LOGGER.info("Sending STANDBY cmd via %s: %s", prop, value)
+                await self.client.async_set_property_value(self.device.dsn, prop, value)
+                await self.async_request_refresh()
+
+            await self._with_cloud_session(_do)
+            return
 
         async def _do() -> None:
-            value = self.profile.standby_value(self._learned_device_signature())
-            if value is None:
-                value = build_standby_encoded()
-                _LOGGER.warning(
-                    "No learned frame for this %s yet, so the standby command is "
-                    "sent without the device signature and the machine may ignore "
-                    "it. Trigger any command once from the official Coffee Link "
-                    "app (e.g. power-on) so Home Assistant can learn the signature.",
-                    self.profile.label,
-                )
-            self._record_sent(value)
-            prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
-            _LOGGER.info("Sending STANDBY cmd via %s: %s", prop, value)
-            await self.client.async_set_property_value(self.device.dsn, prop, value)
-            await self.async_request_refresh()
+            value = self._standby_command_value()
+            await self._send_property_command(value, "STANDBY cmd")
 
         await self._with_cloud_session(_do)
 

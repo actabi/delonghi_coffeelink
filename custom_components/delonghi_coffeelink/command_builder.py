@@ -16,12 +16,19 @@ from .const import (
     CRC_POLY,
     DEFAULT_RECIPE_PARAMS,
     ELETTA_RECIPE_TRAILER,
+    POWER_SESSION_REFRESH_PARAMS,
     POWER_STANDBY_PARAMS,
     POWER_WAKE_PARAMS,
 )
 
 _BEV_NAMES = {bev_id: display for bev_id, _key, display, _icon in BEVERAGES}
 _ACTION_NAMES = {0x01: "start", 0x02: "stop"}
+
+
+def _session_id_to_tail_bytes(app_id: int) -> bytes:
+    """Encode cloud session app id as signed int32 BE (DlghIoT / ayla_client convention)."""
+    signed = ((app_id & 0xFFFFFFFF) ^ 0x80000000) - 0x80000000
+    return signed.to_bytes(4, "big", signed=True)
 
 
 def crc16_aug_ccitt(data: bytes) -> int:
@@ -224,6 +231,54 @@ def build_wake_command(timestamp: int | None = None) -> bytes:
 def build_wake_encoded() -> str:
     """Shortcut: build wake command + base64 encode."""
     return encode_command(build_wake_command())
+
+
+def build_wake_with_session_tail(app_id: int, timestamp: int | None = None) -> bytes:
+    """Wake/power-on with the cloud session id in the 4-byte tail (DlghIoT resume)."""
+    return build_power_command(
+        POWER_WAKE_PARAMS, timestamp, _session_id_to_tail_bytes(app_id)
+    )
+
+
+def build_wake_with_session_tail_encoded(app_id: int) -> str:
+    return encode_command(build_wake_with_session_tail(app_id))
+
+
+def build_standby_with_session_tail(app_id: int, timestamp: int | None = None) -> bytes:
+    """Standby with the cloud session id in the 4-byte tail (DlghIoT standby)."""
+    return build_power_command(
+        POWER_STANDBY_PARAMS, timestamp, _session_id_to_tail_bytes(app_id)
+    )
+
+
+def build_standby_with_session_tail_encoded(app_id: int) -> str:
+    return encode_command(build_standby_with_session_tail(app_id))
+
+
+def build_session_refresh_command(app_id: int, timestamp: int | None = None) -> bytes:
+    """Deep-standby session nudge (DlghIoT refresh(), params 03 02)."""
+    return build_power_command(
+        POWER_SESSION_REFRESH_PARAMS, timestamp, _session_id_to_tail_bytes(app_id)
+    )
+
+
+def build_session_refresh_encoded(app_id: int) -> str:
+    return encode_command(build_session_refresh_command(app_id))
+
+
+def validate_power_frame_b64(value_b64: str, expected_params: bytes) -> bool:
+    """True if a base64 frame is a valid power command with the expected params."""
+    decoded = decode_command(value_b64)
+    return (
+        decoded.get("type") == "power"
+        and decoded.get("params") == expected_params.hex(" ")
+        and decoded.get("crc_valid") is True
+    )
+
+
+def validate_replayed_wake_frame(value_b64: str) -> bool:
+    """Validate a learned/replayed wake frame before send (params 02 01, CRC ok)."""
+    return validate_power_frame_b64(value_b64, POWER_WAKE_PARAMS)
 
 
 def build_standby_command(
