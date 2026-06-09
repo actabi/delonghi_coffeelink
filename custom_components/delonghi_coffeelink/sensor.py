@@ -1,44 +1,124 @@
 """Sensor platform for DeLonghi Coffee Link."""
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
+from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .ayla_client import normalize_signed_app_id
 from .const import (
     APP_ID_PROPERTY,
     COUNTER_SENSORS,
     DOMAIN,
+    ECAM_ONLY_COUNTER_KEYS,
+    INFO_DIAGNOSTIC_KEYS,
     INFO_SENSORS,
     INTEGRATION_CLOUD_APP_ID,
     MANUFACTURER,
+    PROPERTY_MEASUREMENT,
+    PROPERTY_UNITS,
+    PROPERTY_VALUE_SCALE,
 )
 from .coordinator import DelonghiCoordinator
 
 _HA_CLOUD_SESSION_APP_ID = normalize_signed_app_id(INTEGRATION_CLOUD_APP_ID)
+_SESSION_TS_MIN = 946684800  # 2000-01-01
+_SESSION_TS_MAX = 4102444800  # 2100-01-01
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _resolve_property(data: dict[str, Any] | None, candidates: list[str]) -> str | None:
-    """Return the first candidate property name present on the device, else None.
+def _parse_counter_value_legacy(val: Any) -> int | None:
+    """Pre-PR Soul counter parser: plain integers only."""
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, int):
+        return val
+    try:
+        return int(str(val).strip())
+    except (TypeError, ValueError):
+        return None
 
-    Property names differ across DeLonghi models (e.g. d700_tot_bev_b on Soul vs
-    d701_tot_bev_b on Eletta Explore), so each sensor declares a candidate list.
-    """
+
+def _parse_counter_value(val: Any) -> int | None:
+    """Parse an Ayla counter property value to int (ECAM may use floats/JSON)."""
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        return int(val)
+    if isinstance(val, dict):
+        total = 0
+        for item in val.values():
+            parsed = _parse_counter_value(item)
+            if parsed is not None:
+                total += parsed
+        return total
+    text = str(val).strip()
+    if not text:
+        return 0
+    if text.startswith("{"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            return _parse_counter_value(payload)
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return int(float(text))
+    except ValueError:
+        return None
+
+
+def _resolve_property(data: dict[str, Any] | None, candidates: list[str]) -> str | None:
+    """Return the first candidate property name present on the device, else None."""
     data = data or {}
     for candidate in candidates:
         if candidate in data:
             return candidate
     return None
+
+
+def _parse_last_connected(value: Any) -> datetime | str | int | float | None:
+    """Decode ECAM session blob (8-byte timestamp+app_id) or return value as-is."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+    try:
+        raw = base64.b64decode(value.strip(), validate=True)
+        if len(raw) == 8:
+            ts = int.from_bytes(raw[:4], "big")
+            if _SESSION_TS_MIN <= ts <= _SESSION_TS_MAX:
+                return dt_util.as_local(dt_util.utc_from_timestamp(ts))
+    except (ValueError, binascii.Error):
+        pass
+    return value
 
 
 async def async_setup_entry(
@@ -49,7 +129,10 @@ async def async_setup_entry(
     coordinators: list[DelonghiCoordinator] = hass.data[DOMAIN][entry.entry_id]
     entities: list[SensorEntity] = []
     for coord in coordinators:
+        ecam = coord.profile.uses_cloud_session
         for candidates, key, friendly, icon in COUNTER_SENSORS:
+            if key in ECAM_ONLY_COUNTER_KEYS and not ecam:
+                continue
             prop_name = _resolve_property(coord.data, candidates)
             if prop_name is None:
                 _LOGGER.debug(
@@ -61,14 +144,38 @@ async def async_setup_entry(
                 DelonghiCounterSensor(coord, prop_name, key, friendly, icon)
             )
         for candidates, key, friendly, icon in INFO_SENSORS:
-            prop_name = _resolve_property(coord.data, candidates)
+            if key == "oem_model_info" and not ecam:
+                continue
+            if key == "last_connected":
+                lc_candidates = (
+                    ["app_device_connected", "device_connected"]
+                    if ecam
+                    else ["device_connected", "app_device_connected"]
+                )
+                prop_name = _resolve_property(coord.data, lc_candidates)
+            else:
+                prop_name = _resolve_property(coord.data, candidates)
             if prop_name is None:
                 _LOGGER.debug(
                     "Skipping info sensor '%s' for dsn=%s: none of %s present",
                     key, coord.device.dsn, candidates,
                 )
                 continue
-            entities.append(DelonghiInfoSensor(coord, prop_name, key, friendly, icon))
+            if key == "last_connected" and ecam:
+                entities.append(
+                    DelonghiLastConnectedSensor(coord, prop_name, key, friendly, icon)
+                )
+            else:
+                category = (
+                    EntityCategory.DIAGNOSTIC
+                    if key in INFO_DIAGNOSTIC_KEYS
+                    else None
+                )
+                entities.append(
+                    DelonghiInfoSensor(
+                        coord, prop_name, key, friendly, icon, entity_category=category
+                    )
+                )
         entities.append(DelonghiConnectionSensor(coord))
         entities.append(DelonghiMachineStatusSensor(coord))
         entities.append(DelonghiLastCommandSensor(coord))
@@ -100,7 +207,7 @@ class _Base(CoordinatorEntity[DelonghiCoordinator], SensorEntity):
 
 
 class DelonghiCounterSensor(_Base):
-    """Integer counter sensor with TOTAL_INCREASING state class."""
+    """Counter sensor; TOTAL_INCREASING by default, MEASUREMENT for ECAM percentages."""
 
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
@@ -115,25 +222,23 @@ class DelonghiCounterSensor(_Base):
         super().__init__(coord, key, friendly, icon)
         self._prop_name = prop_name
         self._logged_unparseable = False
+        self._ecam_parsing = coord.profile.uses_cloud_session
+        if prop_name in PROPERTY_UNITS:
+            self._attr_native_unit_of_measurement = PROPERTY_UNITS[prop_name]
+        if prop_name in PROPERTY_MEASUREMENT:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
-    def native_value(self) -> int | None:
+    def native_value(self) -> int | float | None:
         prop = (self.coordinator.data or {}).get(self._prop_name)
         if not prop:
             return None
         val = prop.get("value")
-        if val is None:
-            return None
-        # Soul exposes counters as plain integers. Some models may wrap the value
-        # differently (e.g. a base64 binary blob); don't guess the layout - parse
-        # what we can and log the raw value once so the format can be confirmed.
-        if isinstance(val, bool):
-            return None
-        if isinstance(val, int):
-            return val
-        try:
-            return int(str(val).strip())
-        except (TypeError, ValueError):
+        if self._ecam_parsing:
+            numeric = _parse_counter_value(val)
+        else:
+            numeric = _parse_counter_value_legacy(val)
+        if numeric is None:
             if not self._logged_unparseable:
                 self._logged_unparseable = True
                 _LOGGER.warning(
@@ -146,14 +251,40 @@ class DelonghiCounterSensor(_Base):
                     val,
                 )
             return None
+        scale = PROPERTY_VALUE_SCALE.get(self._prop_name)
+        if scale:
+            return round(numeric / scale, 1)
+        return numeric
 
 
 class DelonghiInfoSensor(_Base):
-    """Generic info sensor (version string, timestamp, etc.).
+    """Generic info sensor (version string, serial, etc.)."""
 
-    The concrete property name is resolved per-model at setup time (see
-    INFO_SENSORS candidate lists), so no name fallback is needed here.
-    """
+    def __init__(
+        self,
+        coord: DelonghiCoordinator,
+        prop_name: str,
+        key: str,
+        friendly: str,
+        icon: str,
+        *,
+        entity_category: EntityCategory | None = None,
+    ) -> None:
+        super().__init__(coord, key, friendly, icon)
+        self._prop_name = prop_name
+        if entity_category is not None:
+            self._attr_entity_category = entity_category
+
+    @property
+    def native_value(self) -> Any:
+        prop = (self.coordinator.data or {}).get(self._prop_name)
+        if not prop:
+            return None
+        return prop.get("value")
+
+
+class DelonghiLastConnectedSensor(_Base):
+    """Last connect time for ECAM models (8-byte app_device_connected session blob)."""
 
     def __init__(
         self,
@@ -166,12 +297,42 @@ class DelonghiInfoSensor(_Base):
         super().__init__(coord, key, friendly, icon)
         self._prop_name = prop_name
 
-    @property
-    def native_value(self) -> Any:
+    def _raw_value(self) -> Any:
         prop = (self.coordinator.data or {}).get(self._prop_name)
         if not prop:
             return None
         return prop.get("value")
+
+    @property
+    def native_value(self) -> datetime | str | int | float | None:
+        return _parse_last_connected(self._raw_value())
+
+    @property
+    def device_class(self) -> SensorDeviceClass | None:
+        parsed = _parse_last_connected(self._raw_value())
+        if isinstance(parsed, datetime):
+            return SensorDeviceClass.TIMESTAMP
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        raw = self._raw_value()
+        if not isinstance(raw, str):
+            return {}
+        try:
+            blob = base64.b64decode(raw.strip(), validate=True)
+            if len(blob) != 8:
+                return {}
+            ts = int.from_bytes(blob[:4], "big")
+            if not (_SESSION_TS_MIN <= ts <= _SESSION_TS_MAX):
+                return {}
+            app_id = int.from_bytes(blob[4:8], "big", signed=True)
+        except (ValueError, binascii.Error):
+            return {}
+        return {
+            "connected_app_id": app_id,
+            "connected_app_id_hex": f"{app_id & 0xFFFFFFFF:08x}",
+        }
 
 
 class DelonghiConnectionSensor(_Base):
@@ -186,11 +347,7 @@ class DelonghiConnectionSensor(_Base):
 
 
 class DelonghiMachineStatusSensor(_Base):
-    """Machine operational state decoded from ``d302_monitor_machine``
-    (standby, ready, rinsing, ...). Contributed via PR #5 (@TischenkoArseny,
-    based on the DlghIoT client). ``None``/unknown if the blob doesn't parse
-    on this model - the parse error is surfaced as an attribute.
-    """
+    """Machine operational state decoded from ``d302_monitor_machine``."""
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord, "machine_status", "Machine Status", "mdi:coffee-maker")
@@ -209,6 +366,11 @@ class DelonghiMachineStatusSensor(_Base):
         for key in ("status", "progress", "action", "accessory", "error"):
             if key in monitor:
                 attrs[key] = monitor[key]
+        if self.coordinator.profile.uses_cloud_session:
+            if "switches" in monitor:
+                attrs["switches"] = f"0x{monitor['switches']:04X}"
+            if "alarms" in monitor:
+                attrs["alarms"] = f"0x{monitor['alarms']:08X}"
         return attrs
 
 
@@ -232,11 +394,7 @@ def _cloud_session_holder(app_id: int | None) -> str:
 
 
 class DelonghiCloudSessionAppIdSensor(_Base):
-    """Diagnostic: machine property ``app_id`` (current cloud session holder).
-
-    Unlike ``Last Connected`` (``app_device_connected``), this is the slot the
-    official Coffee Link app checks before connecting — not the last connect POST.
-    """
+    """Diagnostic: machine property ``app_id`` (current cloud session holder)."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -262,14 +420,7 @@ class DelonghiCloudSessionAppIdSensor(_Base):
 
 
 class DelonghiLastCommandSensor(_Base):
-    """Diagnostic: last command seen on the binary channel.
-
-    Surfaces the command sniffer (see coordinator). When the official Coffee
-    Link app sends a command, its exact base64 bytes appear here as the state,
-    decoded in the attributes - including ``matches_integration`` which tells
-    whether the app's bytes match what this integration would generate. This is
-    the ground-truth needed to debug models where commands are silently ignored.
-    """
+    """Diagnostic: last command seen on the binary channel."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -283,7 +434,6 @@ class DelonghiLastCommandSensor(_Base):
         rec = self.coordinator.last_captured_command
         if not rec:
             return None
-        # Frames are short (<= ~24 base64 chars), well within the 255 limit.
         return rec.get("raw_b64")
 
     @property

@@ -133,32 +133,78 @@ BEVERAGES = [
 # wins (same approach as COMMAND_PROPERTY_CANDIDATES). A sensor whose property is
 # absent on the device is not created (avoids permanently-"unknown" entities).
 #   - PrimaDonna Soul (DL-millcore): d700_tot_bev_b, d701_tot_bev_bw, d703_tot_bev_w, d825_descale_status
-#   - Eletta Explore (DL-striker-cb): d701_tot_bev_b (no milk/water/descale equivalents exposed)
+#   - Eletta Explore (DL-striker-cb): d701_tot_bev_b, d553_water_tot_qty, d512_percentage_to_deca, …
 COUNTER_SENSORS = [
     (["d700_tot_bev_b", "d701_tot_bev_b"], "total_beverages",       "Total Beverages",       "mdi:counter"),
     (["d704_tot_bev_espressi"],            "total_espresso",        "Total Espresso",        "mdi:coffee"),
     (["d701_tot_bev_bw"],                  "total_milk_drinks",     "Total Milk Drinks",     "mdi:cup"),
-    (["d703_tot_bev_w"],                   "total_water",           "Total Water",           "mdi:water"),
+    (["d703_tot_bev_w", "d553_water_tot_qty"], "total_water",       "Total Water",           "mdi:water"),
+    (["d706_tot_id2_coffee"],              "total_coffee",          "Total Coffee",          "mdi:coffee"),
+    (["d707_tot_id3_long"],                "total_long_coffee",     "Total Long Coffee",     "mdi:coffee"),
+    (["d709_id6_americano"],               "total_americano",       "Total Americano",       "mdi:coffee"),
     (["d710_tot_id7_capp"],                "total_cappuccino",      "Total Cappuccino",      "mdi:coffee"),
     (["d711_id8_lattmacc"],                "total_latte_macchiato", "Total Latte Macchiato", "mdi:coffee"),
     (["d712_id9_cafflatt"],                "total_caffelatte",      "Total Caffe Latte",     "mdi:coffee"),
+    (["d713_id10_flatwhite"],              "total_flat_white",      "Total Flat White",      "mdi:coffee"),
     (["d715_id12_hotmilk"],                "total_hot_milk",        "Total Hot Milk",        "mdi:cup"),
     (["d718_id16_hotwater"],               "total_hot_water",       "Total Hot Water",       "mdi:water"),
     (["d719_id22_tea"],                    "total_tea",             "Total Tea",             "mdi:tea"),
     (["d720_tot_id23_coffee_pot"],         "total_coffee_pot",      "Total Coffee Pot",      "mdi:coffee-maker"),
+    (["d731_tot_mug_hot"],                 "total_hot_mug",         "Total Hot Mug",         "mdi:coffee-to-go"),
+    (["d732_tot_mug_cold"],                "total_cold_mug",        "Total Cold Mug",        "mdi:coffee-to-go-outline"),
+    (["d735_iced_bev"],                    "total_iced",            "Total Iced Beverages",  "mdi:cup-water"),
+    (["d738_cold_brew_bev"],               "total_cold_brew",       "Total Cold Brew",       "mdi:coffee-outline"),
     (["d551_cnt_coffee_fondi"],            "grounds_counter",       "Grounds Counter",       "mdi:dots-grid"),
-    (["d825_descale_status"],              "descale_status",        "Descale Status",        "mdi:water-pump"),
+    (["d510_ground_cnt_percentage"],       "grounds_fill_percent",  "Grounds Fill",          "mdi:dots-grid"),
+    (["d825_descale_status", "d512_percentage_to_deca"], "descale_status", "Descale Status", "mdi:water-pump"),
+    (["d552_cnt_calc_tot"],                "decalcifications_done", "Decalcifications Done", "mdi:shimmer"),
+    (["d513_percentage_usage_fltr"],       "filter_usage",          "Filter Usage",          "mdi:filter-variant"),
     (["d556_water_hardness"],              "water_hardness",        "Water Hardness",        "mdi:water-percent"),
 ]
+
+# Counter entity keys exposed only on ECAM models (uses_cloud_session); skipped on Soul.
+ECAM_ONLY_COUNTER_KEYS = frozenset({
+    "total_coffee",
+    "total_long_coffee",
+    "total_americano",
+    "total_flat_white",
+    "total_hot_mug",
+    "total_cold_mug",
+    "total_iced",
+    "total_cold_brew",
+    "grounds_fill_percent",
+    "decalcifications_done",
+    "filter_usage",
+})
+
+# Per-property scaling/units (keyed by resolved Ayla property name, not entity_key).
+PROPERTY_VALUE_SCALE: dict[str, float] = {
+    "d553_water_tot_qty": 1000,  # ml → L
+}
+PROPERTY_UNITS: dict[str, str] = {
+    "d553_water_tot_qty": "L",
+    "d512_percentage_to_deca": "%",
+    "d513_percentage_usage_fltr": "%",
+    "d510_ground_cnt_percentage": "%",
+}
+PROPERTY_MEASUREMENT = frozenset({
+    "d512_percentage_to_deca",
+    "d513_percentage_usage_fltr",
+    "d510_ground_cnt_percentage",
+})
 
 # Info sensors (not counters, general state):
 #   (candidate_property_names, entity_key, display_name, icon)
 INFO_SENSORS = [
     (["software_version"],                         "software_version", "Software Version", "mdi:chip"),
     (["device_connected", "app_device_connected"], "last_connected",   "Last Connected",   "mdi:clock-outline"),
+    (["oem_host_version"],                       "oem_model_info",   "OEM Host Version", "mdi:information-outline"),
 ]
 
-PLATFORMS = ["sensor", "button"]
+# Entity keys in INFO_SENSORS that should be diagnostic (hidden from main UI).
+INFO_DIAGNOSTIC_KEYS = frozenset({"oem_model_info"})
+
+PLATFORMS = ["sensor", "binary_sensor", "button"]
 
 # Service names
 SERVICE_SEND_RAW_COMMAND = "send_raw_command"

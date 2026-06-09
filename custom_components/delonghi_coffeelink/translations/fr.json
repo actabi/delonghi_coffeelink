@@ -19,5 +19,21 @@
     "abort": {
       "already_configured": "Ce compte est deja configure."
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "water_tank_empty": {
+        "name": "Reservoir d'eau vide"
+      },
+      "waste_container_full": {
+        "name": "Bac a marc plein"
+      },
+      "decalcification_needed": {
+        "name": "Decalcification necessaire"
+      },
+      "filter_change_needed": {
+        "name": "Changement de filtre necessaire"
+      }
+    }
   }
 }

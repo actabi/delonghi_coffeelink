@@ -56,12 +56,21 @@ def _parse_monitor_contents(contents: bytes) -> dict[str, int]:
     """Extract the monitor fields from the MonitorV2 contents block."""
     if len(contents) < 8:
         raise ValueError("monitor contents too short")
-    return {
+    fields: dict[str, int] = {
         "accessory": contents[0],
         "status": contents[5],
         "action": contents[6],
         "progress": contents[7],
     }
+    if len(contents) >= 13:
+        fields["switches"] = contents[1] | (contents[2] << 8)
+        fields["alarms"] = (
+            contents[3]
+            | (contents[4] << 8)
+            | (contents[8] << 16)
+            | (contents[9] << 24)
+        )
+    return fields
 
 
 def parse_monitor_b64(value_b64: str) -> dict[str, Any]:
@@ -79,13 +88,18 @@ def parse_monitor_b64(value_b64: str) -> dict[str, Any]:
             return {"error": f"not MonitorV2 (id={data[0] if data else '?'})"}
         fields = _parse_monitor_contents(data[2:])
         status = fields["status"]
-        return {
+        result: dict[str, Any] = {
             "status": status,
             "status_name": MACHINE_STATUS.get(status, "unknown"),
             "progress": fields["progress"],
             "action": fields["action"],
             "accessory": fields["accessory"],
         }
+        if "switches" in fields:
+            result["switches"] = fields["switches"]
+        if "alarms" in fields:
+            result["alarms"] = fields["alarms"]
+        return result
     except (ValueError, binascii.Error) as err:
         _LOGGER.debug("Failed to parse monitor blob: %s", err)
         return {"error": str(err)}

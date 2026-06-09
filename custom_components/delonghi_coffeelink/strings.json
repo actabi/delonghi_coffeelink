@@ -19,5 +19,21 @@
     "abort": {
       "already_configured": "This account is already configured."
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "water_tank_empty": {
+        "name": "Water tank empty"
+      },
+      "waste_container_full": {
+        "name": "Waste container full"
+      },
+      "decalcification_needed": {
+        "name": "Decalcification needed"
+      },
+      "filter_change_needed": {
+        "name": "Filter change needed"
+      }
+    }
   }
 }
