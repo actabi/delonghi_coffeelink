@@ -4,15 +4,21 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .ayla_client import normalize_signed_app_id
+from .counters import counter_breakdown, parse_counter_value
 from .const import (
     APP_ID_PROPERTY,
     COUNTER_SENSORS,
@@ -49,7 +55,7 @@ async def async_setup_entry(
     coordinators: list[DelonghiCoordinator] = hass.data[DOMAIN][entry.entry_id]
     entities: list[SensorEntity] = []
     for coord in coordinators:
-        for candidates, key, friendly, icon in COUNTER_SENSORS:
+        for candidates, key, _friendly, icon in COUNTER_SENSORS:
             prop_name = _resolve_property(coord.data, candidates)
             if prop_name is None:
                 _LOGGER.debug(
@@ -58,9 +64,9 @@ async def async_setup_entry(
                 )
                 continue
             entities.append(
-                DelonghiCounterSensor(coord, prop_name, key, friendly, icon)
+                DelonghiCounterSensor(coord, prop_name, key, icon)
             )
-        for candidates, key, friendly, icon in INFO_SENSORS:
+        for candidates, key, _friendly, icon in INFO_SENSORS:
             prop_name = _resolve_property(coord.data, candidates)
             if prop_name is None:
                 _LOGGER.debug(
@@ -68,7 +74,7 @@ async def async_setup_entry(
                     key, coord.device.dsn, candidates,
                 )
                 continue
-            entities.append(DelonghiInfoSensor(coord, prop_name, key, friendly, icon))
+            entities.append(DelonghiInfoSensor(coord, prop_name, key, icon))
         entities.append(DelonghiConnectionSensor(coord))
         entities.append(DelonghiMachineStatusSensor(coord))
         entities.append(DelonghiLastCommandSensor(coord))
@@ -80,10 +86,10 @@ async def async_setup_entry(
 class _Base(CoordinatorEntity[DelonghiCoordinator], SensorEntity):
     _attr_has_entity_name = True
 
-    def __init__(self, coord: DelonghiCoordinator, unique_suffix: str, name: str, icon: str) -> None:
+    def __init__(self, coord: DelonghiCoordinator, unique_suffix: str, icon: str) -> None:
         super().__init__(coord)
         self._attr_unique_id = f"{coord.device.dsn}_{unique_suffix}"
-        self._attr_name = name
+        self._attr_translation_key = unique_suffix
         self._attr_icon = icon
 
     @property
@@ -109,10 +115,9 @@ class DelonghiCounterSensor(_Base):
         coord: DelonghiCoordinator,
         prop_name: str,
         key: str,
-        friendly: str,
         icon: str,
     ) -> None:
-        super().__init__(coord, key, friendly, icon)
+        super().__init__(coord, key, icon)
         self._prop_name = prop_name
         self._logged_unparseable = False
 
@@ -124,28 +129,30 @@ class DelonghiCounterSensor(_Base):
         val = prop.get("value")
         if val is None:
             return None
-        # Soul exposes counters as plain integers. Some models may wrap the value
-        # differently (e.g. a base64 binary blob); don't guess the layout - parse
-        # what we can and log the raw value once so the format can be confirmed.
-        if isinstance(val, bool):
+        # Soul exposes counters as plain integers; newer models (Eletta) publish
+        # some as a JSON object of per-recipe sub-counts. parse_counter_value
+        # handles both; an unparseable scalar yields None and is logged once so
+        # the format can be reported and the parser extended.
+        result = parse_counter_value(val)
+        if result is None and not self._logged_unparseable:
+            self._logged_unparseable = True
+            _LOGGER.warning(
+                "Counter '%s' (%s): value is not a plain integer "
+                "(base_type=%s, raw=%r). Sensor left unknown - please report "
+                "this raw value so the parser can be extended.",
+                self._prop_name,
+                self.name,
+                prop.get("base_type"),
+                val,
+            )
+        return result
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        prop = (self.coordinator.data or {}).get(self._prop_name)
+        if not prop:
             return None
-        if isinstance(val, int):
-            return val
-        try:
-            return int(str(val).strip())
-        except (TypeError, ValueError):
-            if not self._logged_unparseable:
-                self._logged_unparseable = True
-                _LOGGER.warning(
-                    "Counter '%s' (%s): value is not a plain integer "
-                    "(base_type=%s, raw=%r). Sensor left unknown - please report "
-                    "this raw value so the parser can be extended.",
-                    self._prop_name,
-                    self._attr_name,
-                    prop.get("base_type"),
-                    val,
-                )
-            return None
+        return counter_breakdown(prop.get("value"))
 
 
 class DelonghiInfoSensor(_Base):
@@ -160,16 +167,22 @@ class DelonghiInfoSensor(_Base):
         coord: DelonghiCoordinator,
         prop_name: str,
         key: str,
-        friendly: str,
         icon: str,
     ) -> None:
-        super().__init__(coord, key, friendly, icon)
+        super().__init__(coord, key, icon)
         self._prop_name = prop_name
+        if key == "last_connected":
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
     def native_value(self) -> Any:
         prop = (self.coordinator.data or {}).get(self._prop_name)
         if not prop:
+            return None
+        if self._prop_name in ("device_connected", "app_device_connected"):
+            val = prop.get("data_updated_at")
+            if val:
+                return dt_util.parse_datetime(str(val))
             return None
         return prop.get("value")
 
@@ -178,7 +191,7 @@ class DelonghiConnectionSensor(_Base):
     """Exposes Ayla connection status (Online / Offline)."""
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
-        super().__init__(coord, "connection_status", "Connection Status", "mdi:cloud")
+        super().__init__(coord, "connection_status", "mdi:cloud")
 
     @property
     def native_value(self) -> str:
@@ -193,7 +206,7 @@ class DelonghiMachineStatusSensor(_Base):
     """
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
-        super().__init__(coord, "machine_status", "Machine Status", "mdi:coffee-maker")
+        super().__init__(coord, "machine_status", "mdi:coffee-maker")
 
     @property
     def native_value(self) -> str | None:
@@ -242,7 +255,7 @@ class DelonghiCloudSessionAppIdSensor(_Base):
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(
-            coord, "cloud_session_app_id", "Cloud Session app_id", "mdi:key-chain"
+            coord, "cloud_session_app_id", "mdi:key-chain"
         )
 
     @property
@@ -275,7 +288,7 @@ class DelonghiLastCommandSensor(_Base):
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(
-            coord, "last_captured_command", "Last Captured Command", "mdi:radar"
+            coord, "last_captured_command", "mdi:radar"
         )
 
     @property

@@ -64,11 +64,11 @@ class DelonghiStartBeverageButton(_Base):
         super().__init__(coord)
         self._bev_id = bev_id
         self._attr_unique_id = f"{coord.device.dsn}_start_{key}"
-        self._attr_name = friendly
+        self._attr_translation_key = f"start_{key}"
         self._attr_icon = icon
 
     async def async_press(self) -> None:
-        _LOGGER.info("Start beverage 0x%02x (%s)", self._bev_id, self._attr_name)
+        _LOGGER.info("Start beverage 0x%02x (%s)", self._bev_id, self.name)
         await self.coordinator.async_send_beverage(self._bev_id, ACTION_START)
 
 
@@ -78,7 +78,7 @@ class DelonghiWakeButton(_Base):
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord)
         self._attr_unique_id = f"{coord.device.dsn}_wake"
-        self._attr_name = "Wake"
+        self._attr_translation_key = "wake"
         self._attr_icon = "mdi:power"
 
     async def async_press(self) -> None:
@@ -97,7 +97,7 @@ class DelonghiStandbyButton(_Base):
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord)
         self._attr_unique_id = f"{coord.device.dsn}_standby"
-        self._attr_name = "Standby"
+        self._attr_translation_key = "standby"
         self._attr_icon = "mdi:power-standby"
 
     async def async_press(self) -> None:
@@ -111,7 +111,7 @@ class DelonghiStopButton(_Base):
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord)
         self._attr_unique_id = f"{coord.device.dsn}_stop"
-        self._attr_name = "Stop"
+        self._attr_translation_key = "stop"
         self._attr_icon = "mdi:stop"
 
     async def async_press(self) -> None:
@@ -134,7 +134,7 @@ class DelonghiDumpRecipesButton(_Base):
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord)
         self._attr_unique_id = f"{coord.device.dsn}_dump_recipes"
-        self._attr_name = "Dump Recipe Datapoints"
+        self._attr_translation_key = "dump_recipes"
         self._attr_icon = "mdi:bug-outline"
 
     async def async_press(self) -> None:

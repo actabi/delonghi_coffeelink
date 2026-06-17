@@ -1,146 +1,125 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "DeLonghi Coffee Link",
-        "description": "Enter your Coffee Link account credentials. These are the same you use in the Coffee Link mobile app.",
-        "data": {
-          "email": "Email",
-          "password": "Password"
-        }
-      }
-    },
-    "error": {
-      "invalid_auth": "Invalid email or password.",
-      "cannot_connect": "Failed to connect to DeLonghi cloud.",
-      "no_devices": "No DeLonghi devices found on this account.",
-      "unknown": "Unexpected error."
-    },
-    "abort": {
-      "already_configured": "This account is already configured."
-    }
-  },
   "entity": {
     "sensor": {
       "total_beverages": {
-        "name": "Total Beverages"
+        "name": "Celkem Nápoje"
       },
       "total_espresso": {
-        "name": "Total Espresso"
+        "name": "Celkem Espresso"
       },
       "total_milk_drinks": {
-        "name": "Total Milk Drinks"
+        "name": "Celkem Mléčné nápoje"
       },
       "total_water": {
-        "name": "Total Water"
+        "name": "Celkem Voda"
       },
       "total_espresso_alt": {
-        "name": "Total Espresso Alt"
+        "name": "Celkem Espresso Alt"
       },
       "total_coffee": {
-        "name": "Total Coffee"
+        "name": "Celkem Coffee"
       },
       "total_long_coffee": {
-        "name": "Total Long Coffee"
+        "name": "Celkem Long Coffee"
       },
       "total_doppio": {
-        "name": "Total Doppio+"
+        "name": "Celkem Doppio+"
       },
       "total_americano": {
-        "name": "Total Americano"
+        "name": "Celkem Americano"
       },
       "total_cappuccino": {
-        "name": "Total Cappuccino"
+        "name": "Celkem Cappuccino"
       },
       "total_latte_macchiato": {
-        "name": "Total Latte Macchiato"
+        "name": "Celkem Latte Macchiato"
       },
       "total_caffelatte": {
-        "name": "Total Caffe Latte"
+        "name": "Celkem Caffe Latte"
       },
       "total_flat_white": {
-        "name": "Total Flat White"
+        "name": "Celkem Flat White"
       },
       "total_espresso_macchiato": {
-        "name": "Total Espresso Macchiato"
+        "name": "Celkem Espresso Macchiato"
       },
       "total_hot_milk": {
-        "name": "Total Hot Milk"
+        "name": "Celkem Hot Milk"
       },
       "total_cappuccino_doppio": {
-        "name": "Total Cappuccino Doppio+"
+        "name": "Celkem Cappuccino Doppio+"
       },
       "total_cappuccino_reverse": {
-        "name": "Total Cappuccino Reverse"
+        "name": "Celkem Cappuccino Reverse"
       },
       "total_hot_water": {
-        "name": "Total Hot Water"
+        "name": "Celkem Hot Voda"
       },
       "total_tea": {
-        "name": "Total Tea"
+        "name": "Celkem Tea"
       },
       "total_coffee_pot": {
-        "name": "Total Coffee Pot"
+        "name": "Celkem Konvice kávy"
       },
       "total_brew_over_ice": {
-        "name": "Total Brew Over Ice"
+        "name": "Celkem Zchlazeno ledem"
       },
       "total_mug_hot": {
-        "name": "Total Mug Hot"
+        "name": "Celkem Horké do hrnku"
       },
       "total_mug_cold": {
-        "name": "Total Mug Cold"
+        "name": "Celkem Studené do hrnku"
       },
       "total_iced_bev": {
-        "name": "Total Iced Beverages"
+        "name": "Celkem Ledové Nápoje"
       },
       "total_mug_bev": {
-        "name": "Total Mug Beverages"
+        "name": "Celkem Hrnek Nápoje"
       },
       "total_mug_iced_bev": {
-        "name": "Total Mug Iced Beverages"
+        "name": "Celkem Hrnek Ledové Nápoje"
       },
       "total_cold_brew_bev": {
-        "name": "Total Cold Brew Beverages"
+        "name": "Celkem Cold Brew Nápoje"
       },
       "grounds_counter": {
-        "name": "Grounds Counter"
+        "name": "Počítadlo sedliny"
       },
       "total_descales": {
-        "name": "Total Descales"
+        "name": "Celkem Odvápnění"
       },
       "water_total_quantity": {
-        "name": "Water Total Quantity"
+        "name": "Voda Celkem Množství"
       },
       "total_filters_used": {
-        "name": "Total Filters Used"
+        "name": "Celkem Použitých filtrů"
       },
       "water_filter_quantity": {
-        "name": "Water Filter Quantity"
+        "name": "Voda Filtr Množství"
       },
       "descale_status": {
-        "name": "Descale Status"
+        "name": "Stav odvápnění"
       },
       "water_hardness": {
-        "name": "Water Hardness"
+        "name": "Voda Tvrdost"
       },
       "software_version": {
-        "name": "Software Version"
+        "name": "Verze softwaru"
       },
       "last_connected": {
-        "name": "Last Connected"
+        "name": "Poslední připojení"
       },
       "connection_status": {
-        "name": "Connection Status"
+        "name": "Stav připojení"
       },
       "machine_status": {
-        "name": "Machine Status"
+        "name": "Stav kávovaru"
       },
       "cloud_session_app_id": {
-        "name": "Cloud Session app_id"
+        "name": "ID cloudové relace"
       },
       "last_captured_command": {
-        "name": "Last Captured Command"
+        "name": "Poslední zachycený příkaz"
       }
     },
     "button": {
@@ -151,10 +130,10 @@
         "name": "Coffee"
       },
       "start_long_coffee": {
-        "name": "Long Coffee"
+        "name": "Velká káva"
       },
       "start_double_espresso": {
-        "name": "Double Espresso"
+        "name": "Dvojité Espresso"
       },
       "start_doppio": {
         "name": "Doppio+"
@@ -178,7 +157,7 @@
         "name": "Espresso Macchiato"
       },
       "start_hot_milk": {
-        "name": "Hot Milk"
+        "name": "Horké mléko"
       },
       "start_cappuccino_doppio": {
         "name": "Cappuccino Doppio+"
@@ -187,13 +166,13 @@
         "name": "Cappuccino Reverse"
       },
       "start_hot_water": {
-        "name": "Hot Water"
+        "name": "Horká voda"
       },
       "start_tea": {
-        "name": "Tea"
+        "name": "Čaj"
       },
       "start_coffee_pot": {
-        "name": "Coffee Pot"
+        "name": "Konvice kávy"
       },
       "start_cortado": {
         "name": "Cortado"
@@ -202,22 +181,22 @@
         "name": "Long Black"
       },
       "start_mug_to_go": {
-        "name": "Mug to Go"
+        "name": "S sebou do hrnku"
       },
       "start_brew_over_ice": {
-        "name": "Brew Over Ice"
+        "name": "Zchlazeno ledem"
       },
       "wake": {
-        "name": "Wake"
+        "name": "Probudit"
       },
       "standby": {
-        "name": "Standby"
+        "name": "Pohotovostní režim"
       },
       "stop": {
-        "name": "Stop"
+        "name": "Zastavit"
       },
       "dump_recipes": {
-        "name": "Dump Recipe Datapoints"
+        "name": "Vypsat data receptů"
       }
     }
   }

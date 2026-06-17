@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.14] - 2026-06-17
+
+### Added
+- **Eletta Explore (450.65.G) counter sensors** mapped from the real Ayla
+  datapoint dump contributed in #7 (`kasiom`): iced beverages, cold brew,
+  hot/cold mug drinks, espresso/coffee/long/doppio/americano per-drink totals,
+  total descales (`d552`), total water quantity (`d553`), filters used
+  (`d554`), filtered-water quantity (`d555`), and more. Each sensor is only
+  created when its datapoint is present on the device, so the PrimaDonna Soul
+  is unaffected (absent datapoints are skipped, no orphan "unknown" entities).
+- **Czech localisation** (`translations/cs.json`) and full **French** entity
+  names (`translations/fr.json`), contributed/expanded from #7.
+
+### Fixed
+- **JSON-aggregated counters** (`#7`): newer models (Eletta Explore) publish
+  some counters (e.g. `d735_iced_bev`, `d738_cold_brew_bev`) as a JSON blob of
+  per-recipe sub-counts rather than a plain integer, which left the sensor
+  `unknown`. The counter sensor now detects a `{...}` value, sums the integer
+  sub-values for the sensor state, and exposes the full breakdown in
+  `extra_state_attributes`. Plain-integer counters (Soul) are unchanged.
+- **`Last Connected` showing raw base64** (`#7`): on models where
+  `app_device_connected`/`device_connected` carries a session blob, the sensor
+  no longer renders the unparseable value. It now uses the property's
+  `data_updated_at` timestamp with `device_class: timestamp`.
+
+### Changed
+- Entity names migrated to Home Assistant translation keys
+  (`_attr_translation_key`) for sensors and buttons, with matching
+  `strings.json` + `en.json`/`fr.json`/`cs.json` entries (HA best practice).
+  Entity ids (unique_ids) are unchanged, so existing dashboards/automations
+  keep working. Credit: `kasiom` (#7).
+
+### Notes
+- Issue #10 (counter sensors frozen on the PrimaDonna Soul) is a separate,
+  cloud-sync limitation - not addressed by the JSON parsing above. The Ayla
+  property `value` only refreshes when the machine pushes a datapoint (during a
+  session sync); the Soul deliberately does not hold a cloud session while
+  idle, so an idle-polled counter can stay frozen. Under investigation.
+
 ## [0.3.12] - 2026-06-07
 
 ### Added
