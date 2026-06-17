@@ -19,5 +19,206 @@
     "abort": {
       "already_configured": "Ce compte est deja configure."
     }
+  },
+  "entity": {
+    "sensor": {
+      "total_beverages": {
+        "name": "Total boissons"
+      },
+      "total_espresso": {
+        "name": "Total espresso"
+      },
+      "total_milk_drinks": {
+        "name": "Total boissons lactees"
+      },
+      "total_water": {
+        "name": "Total eau"
+      },
+      "total_espresso_alt": {
+        "name": "Total espresso (alt)"
+      },
+      "total_coffee": {
+        "name": "Total cafe"
+      },
+      "total_long_coffee": {
+        "name": "Total cafe long"
+      },
+      "total_doppio": {
+        "name": "Total Doppio+"
+      },
+      "total_americano": {
+        "name": "Total americano"
+      },
+      "total_cappuccino": {
+        "name": "Total cappuccino"
+      },
+      "total_latte_macchiato": {
+        "name": "Total latte macchiato"
+      },
+      "total_caffelatte": {
+        "name": "Total caffe latte"
+      },
+      "total_flat_white": {
+        "name": "Total flat white"
+      },
+      "total_espresso_macchiato": {
+        "name": "Total espresso macchiato"
+      },
+      "total_hot_milk": {
+        "name": "Total lait chaud"
+      },
+      "total_cappuccino_doppio": {
+        "name": "Total cappuccino Doppio+"
+      },
+      "total_cappuccino_reverse": {
+        "name": "Total cappuccino inverse"
+      },
+      "total_hot_water": {
+        "name": "Total eau chaude"
+      },
+      "total_tea": {
+        "name": "Total the"
+      },
+      "total_coffee_pot": {
+        "name": "Total verseuse cafe"
+      },
+      "total_brew_over_ice": {
+        "name": "Total cafe glace"
+      },
+      "total_mug_hot": {
+        "name": "Total mug chaud"
+      },
+      "total_mug_cold": {
+        "name": "Total mug froid"
+      },
+      "total_iced_bev": {
+        "name": "Total boissons glacees"
+      },
+      "total_mug_bev": {
+        "name": "Total boissons mug"
+      },
+      "total_mug_iced_bev": {
+        "name": "Total boissons mug glacees"
+      },
+      "total_cold_brew_bev": {
+        "name": "Total cold brew"
+      },
+      "grounds_counter": {
+        "name": "Compteur de marc"
+      },
+      "total_descales": {
+        "name": "Total detartrages"
+      },
+      "water_total_quantity": {
+        "name": "Quantite d'eau totale"
+      },
+      "total_filters_used": {
+        "name": "Total filtres utilises"
+      },
+      "water_filter_quantity": {
+        "name": "Quantite d'eau filtree"
+      },
+      "descale_status": {
+        "name": "Etat detartrage"
+      },
+      "water_hardness": {
+        "name": "Durete de l'eau"
+      },
+      "software_version": {
+        "name": "Version du logiciel"
+      },
+      "last_connected": {
+        "name": "Derniere connexion"
+      },
+      "connection_status": {
+        "name": "Etat de connexion"
+      },
+      "machine_status": {
+        "name": "Etat de la machine"
+      },
+      "cloud_session_app_id": {
+        "name": "Session cloud app_id"
+      },
+      "last_captured_command": {
+        "name": "Derniere commande capturee"
+      }
+    },
+    "button": {
+      "start_espresso": {
+        "name": "Espresso"
+      },
+      "start_coffee": {
+        "name": "Cafe"
+      },
+      "start_long_coffee": {
+        "name": "Cafe long"
+      },
+      "start_double_espresso": {
+        "name": "Double espresso"
+      },
+      "start_doppio": {
+        "name": "Doppio+"
+      },
+      "start_americano": {
+        "name": "Americano"
+      },
+      "start_cappuccino": {
+        "name": "Cappuccino"
+      },
+      "start_latte_macchiato": {
+        "name": "Latte macchiato"
+      },
+      "start_caffelatte": {
+        "name": "Caffe latte"
+      },
+      "start_flat_white": {
+        "name": "Flat white"
+      },
+      "start_espresso_macchiato": {
+        "name": "Espresso macchiato"
+      },
+      "start_hot_milk": {
+        "name": "Lait chaud"
+      },
+      "start_cappuccino_doppio": {
+        "name": "Cappuccino Doppio+"
+      },
+      "start_cappuccino_reverse": {
+        "name": "Cappuccino inverse"
+      },
+      "start_hot_water": {
+        "name": "Eau chaude"
+      },
+      "start_tea": {
+        "name": "The"
+      },
+      "start_coffee_pot": {
+        "name": "Verseuse cafe"
+      },
+      "start_cortado": {
+        "name": "Cortado"
+      },
+      "start_long_black": {
+        "name": "Long black"
+      },
+      "start_mug_to_go": {
+        "name": "Mug to go"
+      },
+      "start_brew_over_ice": {
+        "name": "Cafe glace"
+      },
+      "wake": {
+        "name": "Reveiller"
+      },
+      "standby": {
+        "name": "Veille"
+      },
+      "stop": {
+        "name": "Arreter"
+      },
+      "dump_recipes": {
+        "name": "Exporter les datapoints recettes"
+      }
+    }
   }
 }
