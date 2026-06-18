@@ -222,6 +222,14 @@ class DelonghiMachineStatusSensor(_Base):
         for key in ("status", "progress", "action", "accessory", "error"):
             if key in monitor:
                 attrs[key] = monitor[key]
+        # Surface the raw switches/alarms bitfields as hex for troubleshooting,
+        # but only on ECAM models: the monitor parser may fill these keys for any
+        # model, so this uses_cloud_session gate is what keeps them off the Soul.
+        if self.coordinator.profile.uses_cloud_session:
+            if "switches" in monitor:
+                attrs["switches"] = f"0x{monitor['switches']:04X}"
+            if "alarms" in monitor:
+                attrs["alarms"] = f"0x{monitor['alarms']:08X}"
         return attrs
 
 

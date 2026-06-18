@@ -27,7 +27,7 @@ from .coordinator import DelonghiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
 
 BEVERAGE_KEYS = [b[1] for b in BEVERAGES]
 

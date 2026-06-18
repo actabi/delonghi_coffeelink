@@ -178,7 +178,7 @@ INFO_SENSORS = [
     (["device_connected", "app_device_connected"], "last_connected",   "Last Connected",   "mdi:clock-outline"),
 ]
 
-PLATFORMS = ["sensor", "button"]
+PLATFORMS = ["sensor", "binary_sensor", "button"]
 
 # Service names
 SERVICE_SEND_RAW_COMMAND = "send_raw_command"

@@ -228,12 +228,16 @@ def _make_monitor_blob(status: int, progress: int = 0, accessory: int = 1) -> st
 
 def test_parse_monitor_ready():
     out = mon.parse_monitor_b64(_make_monitor_blob(status=7, progress=3))
+    # The synthetic blob carries a 13-byte contents block, so the ECAM
+    # switches/alarms bitfields are parsed too (both zero here).
     assert out == {
         "status": 7,
         "status_name": "ready",
         "progress": 3,
         "action": 0,
         "accessory": 1,
+        "switches": 0,
+        "alarms": 0,
     }
 
 

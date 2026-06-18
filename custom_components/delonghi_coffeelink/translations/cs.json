@@ -198,6 +198,20 @@
       "dump_recipes": {
         "name": "Vypsat data receptů"
       }
+    },
+    "binary_sensor": {
+      "water_tank_empty": {
+        "name": "Prázdná nádržka na vodu"
+      },
+      "waste_container_full": {
+        "name": "Plný odpadní zásobník"
+      },
+      "decalcification_needed": {
+        "name": "Nutné odvápnění"
+      },
+      "filter_change_needed": {
+        "name": "Nutná výměna filtru"
+      }
     }
   }
 }
