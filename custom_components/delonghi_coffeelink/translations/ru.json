@@ -1,0 +1,238 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DeLonghi Coffee Link",
+        "description": "Введите учетные данные вашей учетной записи Coffee Link. Это те же данные, которые используются в мобильном приложении Coffee Link.",
+        "data": {
+          "email": "Email",
+          "password": "Пароль"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Неверный email или пароль.",
+      "cannot_connect": "Не удалось подключиться к облаку DeLonghi.",
+      "no_devices": "В этой учетной записи не найдено устройств DeLonghi.",
+      "unknown": "Неожиданная ошибка."
+    },
+    "abort": {
+      "already_configured": "Эта учетная запись уже настроена."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_beverages": {
+        "name": "Всего напитков"
+      },
+      "total_espresso": {
+        "name": "Всего эспрессо"
+      },
+      "total_milk_drinks": {
+        "name": "Всего молочных напитков"
+      },
+      "total_water": {
+        "name": "Всего воды"
+      },
+      "total_espresso_alt": {
+        "name": "Всего эспрессо (доп.)"
+      },
+      "total_coffee": {
+        "name": "Всего кофе"
+      },
+      "total_long_coffee": {
+        "name": "Всего кофе лонг"
+      },
+      "total_doppio": {
+        "name": "Всего доппио+"
+      },
+      "total_americano": {
+        "name": "Всего американо"
+      },
+      "total_cappuccino": {
+        "name": "Всего капучино"
+      },
+      "total_latte_macchiato": {
+        "name": "Всего латте макиато"
+      },
+      "total_caffelatte": {
+        "name": "Всего латте"
+      },
+      "total_flat_white": {
+        "name": "Всего флэт уайт"
+      },
+      "total_espresso_macchiato": {
+        "name": "Всего эспрессо макиато"
+      },
+      "total_hot_milk": {
+        "name": "Всего горячего молока"
+      },
+      "total_cappuccino_doppio": {
+        "name": "Всего доппио капучино+"
+      },
+      "total_cappuccino_reverse": {
+        "name": "Всего капучино микс"
+      },
+      "total_hot_water": {
+        "name": "Всего горячей воды"
+      },
+      "total_tea": {
+        "name": "Всего чая"
+      },
+      "total_coffee_pot": {
+        "name": "Всего кофейников"
+      },
+      "total_brew_over_ice": {
+        "name": "Всего кофе со льдом"
+      },
+      "total_mug_hot": {
+        "name": "Всего горячих кружек"
+      },
+      "total_mug_cold": {
+        "name": "Всего холодных кружек"
+      },
+      "total_iced_bev": {
+        "name": "Всего холодных напитков со льдом"
+      },
+      "total_mug_bev": {
+        "name": "Всего напитков в кружке"
+      },
+      "total_mug_iced_bev": {
+        "name": "Всего напитков в кружке со льдом"
+      },
+      "total_cold_brew_bev": {
+        "name": "Всего колд-брю напитков"
+      },
+      "grounds_counter": {
+        "name": "Счетчик кофейной гущи"
+      },
+      "total_descales": {
+        "name": "Всего декальцинаций"
+      },
+      "water_total_quantity": {
+        "name": "Общее количество воды"
+      },
+      "total_filters_used": {
+        "name": "Всего использовано фильтров"
+      },
+      "water_filter_quantity": {
+        "name": "Количество воды через фильтр"
+      },
+      "descale_status": {
+        "name": "Статус очистки от накипи"
+      },
+      "water_hardness": {
+        "name": "Жесткость воды"
+      },
+      "software_version": {
+        "name": "Версия ПО"
+      },
+      "last_connected": {
+        "name": "Последнее подключение"
+      },
+      "connection_status": {
+        "name": "Статус подключения"
+      },
+      "machine_status": {
+        "name": "Статус кофемашины"
+      },
+      "cloud_session_app_id": {
+        "name": "app_id облачной сессии"
+      },
+      "last_captured_command": {
+        "name": "Последняя захваченная команда"
+      }
+    },
+    "button": {
+      "start_espresso": {
+        "name": "Эспрессо"
+      },
+      "start_coffee": {
+        "name": "Кофе"
+      },
+      "start_long_coffee": {
+        "name": "Лонг"
+      },
+      "start_double_espresso": {
+        "name": "Двойной эспрессо"
+      },
+      "start_doppio": {
+        "name": "Доппио+"
+      },
+      "start_americano": {
+        "name": "Американо"
+      },
+      "start_cappuccino": {
+        "name": "Капучино"
+      },
+      "start_latte_macchiato": {
+        "name": "Латте макиато"
+      },
+      "start_caffelatte": {
+        "name": "Латте"
+      },
+      "start_flat_white": {
+        "name": "Флэт уайт"
+      },
+      "start_espresso_macchiato": {
+        "name": "Эспрессо макиато"
+      },
+      "start_hot_milk": {
+        "name": "Горячее молоко"
+      },
+      "start_cappuccino_doppio": {
+        "name": "Доппио капучино+"
+      },
+      "start_cappuccino_reverse": {
+        "name": "Капучино микс"
+      },
+      "start_hot_water": {
+        "name": "Горячая вода"
+      },
+      "start_tea": {
+        "name": "Чай"
+      },
+      "start_coffee_pot": {
+        "name": "Кофейник"
+      },
+      "start_cortado": {
+        "name": "Кортадо"
+      },
+      "start_long_black": {
+        "name": "Лонг блэк"
+      },
+      "start_mug_to_go": {
+        "name": "Кружка с собой"
+      },
+      "start_brew_over_ice": {
+        "name": "Кофе со льдом"
+      },
+      "wake": {
+        "name": "Включить"
+      },
+      "standby": {
+        "name": "Режим ожидания"
+      },
+      "stop": {
+        "name": "Стоп"
+      },
+      "dump_recipes": {
+        "name": "Выгрузить datapoints рецептов"
+      }
+    },
+    "binary_sensor": {
+      "water_tank_empty": {
+        "name": "Бак для воды пуст"
+      },
+      "waste_container_full": {
+        "name": "Контейнер для отходов заполнен"
+      },
+      "decalcification_needed": {
+        "name": "Требуется декальцинация"
+      },
+      "filter_change_needed": {
+        "name": "Требуется замена фильтра"
+      }
+    }
+  }
+}
