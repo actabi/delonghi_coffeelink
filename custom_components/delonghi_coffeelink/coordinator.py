@@ -392,6 +392,19 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._integration_app_id,
         )
         await self._send_property_command(value, "SESSION REFRESH")
+        
+    async def async_refresh_machine_status(self) -> None:
+        """Request the machine to publish a fresh monitor status."""
+    
+        async def _do() -> None:
+            value = build_session_refresh_encoded(self._integration_app_id)
+            _LOGGER.info(
+                "Sending manual SESSION REFRESH (app_id=%d)",
+                self._integration_app_id,
+            )
+            await self._send_property_command(value, "SESSION REFRESH")
+    
+        await self._with_cloud_session(_do)
 
     def _wake_command_value(self) -> str:
         """Build wake frame for ECAM models (session tail). Soul uses main inline path."""
