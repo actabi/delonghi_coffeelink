@@ -27,6 +27,7 @@ async def async_setup_entry(
     for coord in coordinators:
         entities.append(DelonghiWakeButton(coord))
         entities.append(DelonghiStandbyButton(coord))
+        entities.append(DelonghiRefreshStatusButton(coord))
         for bev_id, key, friendly, icon in BEVERAGES:
             entities.append(DelonghiStartBeverageButton(coord, bev_id, key, friendly, icon))
         entities.append(DelonghiStopButton(coord))
@@ -103,7 +104,21 @@ class DelonghiStandbyButton(_Base):
     async def async_press(self) -> None:
         _LOGGER.info("Sending STANDBY to machine")
         await self.coordinator.async_send_standby()
+        
+class DelonghiRefreshStatusButton(_Base):
+    """Request a fresh machine status from the coffee machine."""
 
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(coord)
+        self._attr_unique_id = f"{coord.device.dsn}_refresh_status"
+        self._attr_name = "Refresh status"
+        self._attr_icon = "mdi:refresh"
+
+    async def async_press(self) -> None:
+        _LOGGER.info("Requesting fresh machine status")
+        await self.coordinator.async_refresh_machine_status()
 
 class DelonghiStopButton(_Base):
     """Press to STOP currently-running beverage (uses hot_water id + stop action as generic)."""
