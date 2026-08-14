@@ -27,16 +27,17 @@ COMMAND_PROPERTY_CANDIDATES = ["data_request", "app_data_request"]
 RESPONSE_PROPERTY_CANDIDATES = ["data_response", "app_data_response"]
 CONNECTED_PROPERTY_CANDIDATES = ["device_connected", "app_device_connected"]
 
-# Stable HA client id for app_device_connected (DlghIoT uses 0xC0FFEE11).
-# Used ONLY for session registration and property app_id checks.
-# NOT the 4-byte device signature appended to learned command frames.
+# Fallback cloud client id until an ECAM frame has supplied the machine-specific
+# 4-byte signature. Learned signatures replace this value for session registration.
 INTEGRATION_CLOUD_APP_ID = 0xC0FFEE11
 
 APP_ID_PROPERTY = "app_id"  # machine property: current session holder
 CONNECT_REFRESH_INTERVAL = 240  # refresh before 4*60s (device timeout ~300s)
-CONNECT_SETTLE_DELAY = 4  # sleep after POST connect (background tasks only)
+CONNECT_SETTLE_DELAY = 4  # sleep after POST connect before confirmation
 CONNECT_CONFIRM_TIMEOUT = 300  # poll app_id after POST (Eletta; can exceed 180s on bad cloud days)
 CONNECT_CONFIRM_POLL_INTERVAL = 1  # seconds between app_id polls during confirm
+COMMAND_CONFIRM_TIMEOUT = 8  # wait for a response marker or monitor transition
+COMMAND_CONFIRM_POLL_INTERVAL = 1
 
 # Ayla HTTP resilience (502/503/504 gateway timeouts seen on ads-eu.aylanetworks.com).
 CLOUD_HTTP_RETRY_COUNT = 2

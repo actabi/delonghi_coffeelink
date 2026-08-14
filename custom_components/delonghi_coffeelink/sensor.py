@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -24,12 +24,9 @@ from .const import (
     COUNTER_SENSORS,
     DOMAIN,
     INFO_SENSORS,
-    INTEGRATION_CLOUD_APP_ID,
     MANUFACTURER,
 )
 from .coordinator import DelonghiCoordinator
-
-_HA_CLOUD_SESSION_APP_ID = normalize_signed_app_id(INTEGRATION_CLOUD_APP_ID)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,7 +49,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinators: list[DelonghiCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data.coordinators
     entities: list[SensorEntity] = []
     for coord in coordinators:
         for candidates, key, _friendly, icon in COUNTER_SENSORS:
@@ -242,22 +239,8 @@ def _parse_cloud_session_app_id(raw: Any) -> int | None:
         return None
 
 
-def _cloud_session_holder(app_id: int | None) -> str:
-    if app_id is None:
-        return "unknown"
-    if app_id == 0:
-        return "free"
-    if app_id == _HA_CLOUD_SESSION_APP_ID:
-        return "ha"
-    return "foreign"
-
-
 class DelonghiCloudSessionAppIdSensor(_Base):
-    """Diagnostic: machine property ``app_id`` (current cloud session holder).
-
-    Unlike ``Last Connected`` (``app_device_connected``), this is the slot the
-    official Coffee Link app checks before connecting — not the last connect POST.
-    """
+    """Privacy-safe diagnostic for the current cloud-session holder."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -267,30 +250,17 @@ class DelonghiCloudSessionAppIdSensor(_Base):
         )
 
     @property
-    def native_value(self) -> int | None:
+    def native_value(self) -> str:
         prop = (self.coordinator.data or {}).get(APP_ID_PROPERTY)
         if not isinstance(prop, dict):
-            return None
-        return _parse_cloud_session_app_id(prop.get("value"))
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        app_id = self.native_value
-        attrs: dict[str, Any] = {"holder": _cloud_session_holder(app_id)}
-        if app_id is not None:
-            attrs["app_id_hex"] = f"{app_id & 0xFFFFFFFF:08x}"
-        return attrs
+            return "unknown"
+        return self.coordinator.cloud_session_holder(
+            _parse_cloud_session_app_id(prop.get("value"))
+        )
 
 
 class DelonghiLastCommandSensor(_Base):
-    """Diagnostic: last command seen on the binary channel.
-
-    Surfaces the command sniffer (see coordinator). When the official Coffee
-    Link app sends a command, its exact base64 bytes appear here as the state,
-    decoded in the attributes - including ``matches_integration`` which tells
-    whether the app's bytes match what this integration would generate. This is
-    the ground-truth needed to debug models where commands are silently ignored.
-    """
+    """Privacy-safe diagnostic result for the latest command transaction."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -300,12 +270,8 @@ class DelonghiLastCommandSensor(_Base):
         )
 
     @property
-    def native_value(self) -> str | None:
-        rec = self.coordinator.last_captured_command
-        if not rec:
-            return None
-        # Frames are short (<= ~24 base64 chars), well within the 255 limit.
-        return rec.get("raw_b64")
+    def native_value(self) -> str:
+        return self.coordinator.last_command_result
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -315,22 +281,13 @@ class DelonghiLastCommandSensor(_Base):
             "type",
             "style",
             "beverage_name",
-            "beverage_id",
             "action_name",
-            "recipe",
-            "params",
-            "crc",
             "crc_valid",
             "matches_integration",
-            "builder_structural_b64",
-            "structural_b64",
-            "timestamp",
             "captured_at",
-            "hex",
         )
         attrs = {k: rec[k] for k in keys if k in rec}
         resp = self.coordinator.last_machine_response
         if resp:
-            attrs["last_machine_response_hex"] = resp.get("hex")
             attrs["last_machine_response_at"] = resp.get("captured_at")
         return attrs
