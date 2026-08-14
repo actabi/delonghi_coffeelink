@@ -11,7 +11,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ACTION_START, ACTION_STOP, BEVERAGES, DOMAIN, MANUFACTURER
+from .const import ACTION_START, BEVERAGES, DOMAIN, MANUFACTURER
 from .coordinator import DelonghiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinators: list[DelonghiCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data.coordinators
     entities: list[ButtonEntity] = []
     for coord in coordinators:
         entities.append(DelonghiWakeButton(coord))
@@ -71,6 +71,14 @@ class DelonghiStartBeverageButton(_Base):
         _LOGGER.info("Start beverage 0x%02x (%s)", self._bev_id, self.name)
         await self.coordinator.async_send_beverage(self._bev_id, ACTION_START)
 
+    @property
+    def available(self) -> bool:
+        """Do not offer a known-incompatible synthesized command."""
+        return super().available and (
+            not self.coordinator.profile.learns_from_app
+            or self._bev_id in self.coordinator.learned_start_frames
+        )
+
 
 class DelonghiWakeButton(_Base):
     """Wake the machine from standby (captured cmd family 0x84 0x0f)."""
@@ -106,7 +114,7 @@ class DelonghiStandbyButton(_Base):
 
 
 class DelonghiStopButton(_Base):
-    """Press to STOP currently-running beverage (uses hot_water id + stop action as generic)."""
+    """Stop the beverage tracked by the coordinator."""
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord)
@@ -115,11 +123,16 @@ class DelonghiStopButton(_Base):
         self._attr_icon = "mdi:stop"
 
     async def async_press(self) -> None:
-        # NOTE: the exact beverage_id used to stop may matter; using 0x10 (hot water)
-        # since that's the captured example. If machine needs the running beverage id,
-        # a future version can track current bev and stop it appropriately.
-        _LOGGER.info("Generic stop command")
-        await self.coordinator.async_send_beverage(0x10, ACTION_STOP)
+        await self.coordinator.async_stop_active_beverage()
+
+    @property
+    def available(self) -> bool:
+        """Stop is safe only while the active beverage is known."""
+        beverage_id = self.coordinator.active_beverage_id
+        return super().available and beverage_id is not None and (
+            not self.coordinator.profile.learns_from_app
+            or beverage_id in self.coordinator.learned_stop_frames
+        )
 
 
 class DelonghiDumpRecipesButton(_Base):

@@ -10,10 +10,17 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_signed_app_id
+from .ayla_client import (
+    AuthError,
+    AylaDevice,
+    CloudError,
+    DelonghiAylaClient,
+    normalize_signed_app_id,
+)
 from .command_builder import (
     builder_structural_b64,
     build_session_refresh_encoded,
@@ -27,13 +34,14 @@ from .command_builder import (
     recipe_dump_lines,
     replay_with_timestamp,
     serialize_learned_frames,
-    summarize_decoded,
     validate_replayed_wake_frame,
 )
 from .const import (
     ACTION_STOP,
     APP_ID_PROPERTY,
     COMMAND_PROPERTY_CANDIDATES,
+    COMMAND_CONFIRM_POLL_INTERVAL,
+    COMMAND_CONFIRM_TIMEOUT,
     CONNECT_CONFIRM_POLL_INTERVAL,
     CONNECT_CONFIRM_TIMEOUT,
     CONNECT_REFRESH_INTERVAL,
@@ -85,11 +93,11 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_connect_at: float = 0
         self._session_confirmed = False
         self._session_connect_lock = asyncio.Lock()
-        self._session_cold_task: asyncio.Task[None] | None = None
+        self._command_lock = asyncio.Lock()
+        self.active_beverage_id: int | None = None
+        self.last_command_result = "idle"
         if self.profile.uses_cloud_session:
             self._last_seen_app_id: int | None = None
-        else:
-            self._session_refresh_task: asyncio.Task[None] | None = None
         # --- Command sniffer state ---------------------------------------
         # Values WE wrote, so a command echoed back by the cloud is not
         # mis-attributed to the official app. Bounded; only recent writes matter.
@@ -123,9 +131,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_shutdown(self) -> None:
         """Cancel in-flight session work and reset session state on unload."""
-        if self._session_cold_task and not self._session_cold_task.done():
-            self._session_cold_task.cancel()
-        self._session_cold_task = None
         self._last_connect_at = 0
         if self._integration_app_id != self._default_app_id:
             self._integration_app_id = self._default_app_id
@@ -162,6 +167,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.device = d
                     break
             return props
+        except AuthError as err:
+            raise ConfigEntryAuthFailed("Coffee Link credentials are no longer valid") from err
         except CloudError as err:
             raise UpdateFailed(f"Ayla cloud error: {err}") from err
         except Exception as err:
@@ -275,10 +282,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         poll_count = 0
         cloud_errors = 0
         _LOGGER.debug(
-            "Waiting for cloud session confirm on dsn=%s (timeout=%ds, want app_id=%d)",
-            self.device.dsn,
+            "Waiting for cloud session confirmation (timeout=%ds)",
             CONNECT_CONFIRM_TIMEOUT,
-            self._integration_app_id,
         )
         while time.time() - started < CONNECT_CONFIRM_TIMEOUT:
             poll_count += 1
@@ -289,11 +294,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 elapsed = time.time() - started
                 self._session_confirmed = True
                 _LOGGER.info(
-                    "Cloud session confirmed app_id=%d (0x%08x) on dsn=%s after %.1fs "
-                    "(polls=%d, cloud_errors=%d)",
-                    app_id,
-                    app_id & 0xFFFFFFFF,
-                    self.device.dsn,
+                    "Cloud session confirmed after %.1fs (polls=%d, cloud_errors=%d)",
                     elapsed,
                     poll_count,
                     cloud_errors,
@@ -303,25 +304,20 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             now = time.time()
             if now - last_progress >= 15:
                 _LOGGER.debug(
-                    "Still waiting for cloud session confirm on dsn=%s (%.0fs/%ds, "
-                    "app_id=%s, want=%d, polls=%d, cloud_errors=%d)",
-                    self.device.dsn,
+                    "Still waiting for cloud session confirmation (%.0fs/%ds, "
+                    "polls=%d, cloud_errors=%d)",
                     now - started,
                     CONNECT_CONFIRM_TIMEOUT,
-                    app_id if fetch_ok else "fetch_failed",
-                    self._integration_app_id,
                     poll_count,
                     cloud_errors,
                 )
                 last_progress = now
-        last_app_id, last_ok = await self._fetch_app_id_live()
+        _last_app_id, last_ok = await self._fetch_app_id_live()
         _LOGGER.warning(
-            "Connect POST sent but app_id not confirmed after %ds on dsn=%s "
-            "(last app_id=%s, want=%d, polls=%d, cloud_errors=%d)",
+            "Connect POST sent but the session was not confirmed after %ds "
+            "(last fetch ok=%s, polls=%d, cloud_errors=%d)",
             CONNECT_CONFIRM_TIMEOUT,
-            self.device.dsn,
-            last_app_id if last_ok else "fetch_failed",
-            self._integration_app_id,
+            last_ok,
             poll_count,
             cloud_errors,
         )
@@ -339,13 +335,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     holder = "ha"
                 else:
                     holder = "foreign"
-                unsigned = (app_id or 0) & 0xFFFFFFFF
                 _LOGGER.debug(
-                    "Cloud session app_id=%s (0x%08x) holder=%s dsn=%s",
-                    app_id if app_id is not None else "None",
-                    unsigned,
+                    "Cloud session holder changed to %s",
                     holder,
-                    self.device.dsn,
                 )
                 self._last_seen_app_id = app_id
             self._session_confirmed = (
@@ -364,6 +356,16 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:  # noqa: BLE001 - diagnostic must not break polling
             _LOGGER.debug("Session parse failed (non-fatal)", exc_info=True)
 
+    def cloud_session_holder(self, app_id: int | None) -> str:
+        """Return a privacy-safe session-holder label."""
+        if app_id is None:
+            return "unknown"
+        if app_id == 0:
+            return "free"
+        if app_id == self._integration_app_id:
+            return "ha"
+        return "foreign"
+
     def _revert_foreign_app_id_if_session_clear(self, app_id: int | None) -> None:
         """Before a cold POST, use our own cloud id when no session is held."""
         if app_id in (None, 0) and self._integration_app_id != self._default_app_id:
@@ -374,34 +376,59 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._integration_app_id = self._default_app_id
             self._last_connect_at = 0
 
-    async def _send_property_command(self, value: str, label: str) -> None:
+    def _command_confirmation_snapshot(self) -> tuple[Any, dict[str, Any]]:
+        """Return privacy-safe state used to detect a machine acknowledgement."""
+        return self._last_resp_marker, dict(self.monitor)
+
+    async def _wait_for_command_confirmation(
+        self, before: tuple[Any, dict[str, Any]]
+    ) -> bool | None:
+        """Return True/False for supported confirmation, or None if unavailable."""
+        if self.response_property is None and not self.monitor:
+            return None
+
+        response_marker, monitor = before
+        deadline = time.monotonic() + COMMAND_CONFIRM_TIMEOUT
+        while time.monotonic() < deadline:
+            await self.async_request_refresh()
+            if self.response_property and self._last_resp_marker != response_marker:
+                return True
+            if self.monitor and self.monitor != monitor:
+                return True
+            await asyncio.sleep(COMMAND_CONFIRM_POLL_INTERVAL)
+        return False
+
+    async def _send_property_command(
+        self, value: str, label: str, *, confirm: bool = True
+    ) -> None:
         prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
+        before = self._command_confirmation_snapshot()
         self._record_sent(value)
         _LOGGER.info("Sending %s via %s (len=%d)", label, prop, len(value))
-        _LOGGER.debug("Sending %s via %s: %s", label, prop, value)
         await self.client.async_set_property_value(self.device.dsn, prop, value)
-        await self.async_request_refresh()
+        self.last_command_result = "sent"
+        if not confirm:
+            return
+        confirmed = await self._wait_for_command_confirmation(before)
+        if confirmed is True:
+            self.last_command_result = "acknowledged"
+        elif confirmed is False:
+            self.last_command_result = "timed_out"
+            raise HomeAssistantError(
+                "The command was sent, but the coffee maker did not acknowledge it in time"
+            )
 
     async def _maybe_send_session_refresh(self) -> None:
         """DlghIoT refresh(): nudge deep standby before wake when monitor=0."""
         if self.monitor.get("status") != 0:
             return
         value = build_session_refresh_encoded(self._integration_app_id)
-        _LOGGER.info(
-            "Machine in standby; sending session refresh before wake (tail app_id=%d)",
-            self._integration_app_id,
-        )
-        await self._send_property_command(value, "SESSION REFRESH")
+        _LOGGER.info("Machine in standby; sending a session refresh before wake")
+        await self._send_property_command(value, "SESSION REFRESH", confirm=False)
 
     def _wake_command_value(self) -> str:
         """Build wake frame for ECAM models (session tail). Soul uses main inline path."""
-        value = build_wake_with_session_tail_encoded(self._integration_app_id)
-        _LOGGER.debug(
-            "Wake frame session tail app_id=%d (0x%08x)",
-            self._integration_app_id,
-            self._integration_app_id & 0xFFFFFFFF,
-        )
-        return value
+        return build_wake_with_session_tail_encoded(self._integration_app_id)
 
     def _standby_command_value(self) -> str:
         """Build standby frame for ECAM models (session tail). Soul uses main inline path."""
@@ -428,49 +455,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._integration_app_id,
         )
 
-    async def _cold_connect_then(
-        self, send_fn: Callable[[], Awaitable[None]]
-    ) -> None:
-        try:
-            # The lock serializes concurrent cold connects: the first task does
-            # the POST + settle, the ones queued behind it find the session
-            # fresh and go straight to their send. No command is ever dropped.
-            async with self._session_connect_lock:
-                if not self._session_is_fresh(None):
-                    app_id = await self._read_app_id(live=True)
-                    self._revert_foreign_app_id_if_session_clear(app_id)
-                    _LOGGER.debug(
-                        "Cold cloud session connect starting dsn=%s (app_id before=%s)",
-                        self.device.dsn,
-                        app_id,
-                    )
-                    await self._post_cloud_session()
-                    await asyncio.sleep(CONNECT_SETTLE_DELAY)
-                    if not await self._wait_for_session_confirmed():
-                        return
-                    self._last_connect_at = time.time()
-                elif not self._session_confirmed:
-                    app_id, fetch_ok = await self._fetch_app_id_live()
-                    if not fetch_ok or app_id != self._integration_app_id:
-                        _LOGGER.warning(
-                            "Warm session cache but app_id=%s (fetch_ok=%s) != %d on dsn=%s; "
-                            "skipping command",
-                            app_id,
-                            fetch_ok,
-                            self._integration_app_id,
-                            self.device.dsn,
-                        )
-                        return
-            await send_fn()
-        except Exception:  # noqa: BLE001 - strict: do not send after connect failure
-            _LOGGER.warning(
-                "Cold cloud session connect failed for dsn=%s; command not sent",
-                self.device.dsn,
-                exc_info=True,
-            )
-        finally:
-            self._session_cold_task = None
-
     async def _with_cloud_session(
         self, send_fn: Callable[[], Awaitable[None]]
     ) -> None:
@@ -478,52 +462,32 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await send_fn()
             return
 
-        app_id = await self._read_app_id()
-        self._revert_foreign_app_id_if_session_clear(app_id)
+        async with self._session_connect_lock:
+            app_id = await self._read_app_id()
+            self._revert_foreign_app_id_if_session_clear(app_id)
 
-        # When Coffee Link already holds the cloud session (app_id != 0 and != ours),
-        # we adopt its app_id so HA commands ride the same session instead of fighting
-        # the official app. The adoption is TRANSIENT: we never POST a foreign
-        # session, and we revert to our own id once the app releases it (see
-        # _update_session_from_props). If the user opens Coffee Link while HA
-        # is commanding, behaviour is undefined (the app may hold a LAN lock);
-        # close the app first.
-        if app_id not in (None, 0) and app_id != self._integration_app_id:
-            _LOGGER.info(
-                "Adopting foreign cloud session app_id=%d for dsn=%s",
-                app_id,
-                self.device.dsn,
-            )
-            self._integration_app_id = app_id
-            self._last_connect_at = time.time()
+            # Ride an existing official-app session without registering it as ours.
+            if app_id not in (None, 0) and app_id != self._integration_app_id:
+                self._integration_app_id = app_id
+                self._last_connect_at = time.time()
+            elif self._session_is_fresh(app_id):
+                if not self._session_confirmed:
+                    live_app_id, fetch_ok = await self._fetch_app_id_live()
+                    if not fetch_ok or live_app_id != self._integration_app_id:
+                        raise HomeAssistantError(
+                            "The cached Coffee Link cloud session could not be verified"
+                        )
+            else:
+                await self._post_cloud_session()
+                await asyncio.sleep(CONNECT_SETTLE_DELAY)
+                if not await self._wait_for_session_confirmed():
+                    self.last_command_result = "timed_out"
+                    raise HomeAssistantError(
+                        "Timed out while acquiring the Coffee Link cloud session"
+                    )
+                self._last_connect_at = time.time()
+
             await send_fn()
-            return
-
-        if self._session_is_fresh(app_id):
-            _LOGGER.debug("Cloud session warm cache hit for dsn=%s", self.device.dsn)
-            await send_fn()
-            return
-
-        if self._session_cold_task and not self._session_cold_task.done():
-            _LOGGER.warning(
-                "Cloud session connect already in progress for dsn=%s; "
-                "ignoring duplicate command (confirm timeout=%ds)",
-                self.device.dsn,
-                CONNECT_CONFIRM_TIMEOUT,
-            )
-            return
-
-        _LOGGER.debug(
-            "Scheduling cloud session connect for dsn=%s (confirm timeout=%ds)",
-            self.device.dsn,
-            CONNECT_CONFIRM_TIMEOUT,
-        )
-        # Each command gets its own task; the connect lock serializes them, so
-        # commands pressed during a cold connect are queued, not dropped.
-        self._session_cold_task = self.hass.async_create_background_task(
-            self._cold_connect_then(send_fn),
-            "delonghi cloud session cold connect",
-        )
 
     # ------------------------------------------------------------------ #
     # Command sniffer
@@ -582,23 +546,26 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.last_captured_command = decoded
             if origin == "app":
                 self._maybe_learn_frame(decoded)
-            summary = summarize_decoded(decoded)
+            summary = (
+                f"type={decoded.get('type')} style={decoded.get('style')} "
+                f"beverage={decoded.get('beverage_name')} "
+                f"action={decoded.get('action_name')} crc_valid={decoded.get('crc_valid')}"
+            )
             if origin == "app":
                 _LOGGER.warning(
-                    "CAPTURED app->machine command on %s (dsn=%s): %s | %s",
-                    prop_name, self.device.dsn, value, summary,
+                    "Captured app-to-machine command on %s: %s",
+                    prop_name,
+                    summary,
                 )
             else:
-                _LOGGER.debug(
-                    "Observed own command echoed on %s: %s | %s",
-                    prop_name, value, summary,
-                )
+                _LOGGER.debug("Observed own command echoed on %s: %s", prop_name, summary)
         else:
             decoded["captured_at"] = prop.get("data_updated_at")
             self.last_machine_response = decoded
             _LOGGER.debug(
-                "Machine->app response on %s (dsn=%s): %s | %s",
-                prop_name, self.device.dsn, value, summarize_decoded(decoded),
+                "Machine-to-app response on %s: type=%s",
+                prop_name,
+                decoded.get("type"),
             )
 
     def _record_sent(self, value: str) -> None:
@@ -633,16 +600,14 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     replay_with_timestamp(self.learned_wake_frame)
                 ):
                     _LOGGER.warning(
-                        "Discarding persisted wake frame (integrity check failed): %s. "
+                        "Discarding persisted wake frame (integrity check failed). "
                         "Power the machine on once from the official app to re-learn it.",
-                        self.learned_wake_frame,
                     )
                     self.learned_wake_frame = None
             elif not is_wake_power_frame(decode_command(self.learned_wake_frame)):
                 _LOGGER.warning(
-                    "Discarding persisted wake frame (not a real power-on): %s. "
+                    "Discarding persisted wake frame (not a real power-on). "
                     "Power the machine on once from the official app to re-learn it.",
-                    self.learned_wake_frame,
                 )
                 self.learned_wake_frame = None
         total = (
@@ -651,9 +616,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             + (1 if self.learned_wake_frame else 0)
         )
         if total:
-            _LOGGER.debug(
-                "Restored %d learned Eletta frame(s) for dsn=%s", total, self.device.dsn
-            )
+            _LOGGER.debug("Restored %d learned command frame(s)", total)
+        self._restore_device_app_id()
 
     def log_recipe_datapoints(self) -> None:
         """Dump the machine's stored recipe datapoints to the log (read-only).
@@ -665,14 +629,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             _LOGGER.warning("Recipe dump requested but no data fetched yet.")
             return
-        lines = recipe_dump_lines(self.data)
-        _LOGGER.warning(
-            "=== DeLonghi recipe datapoint dump (dsn=%s, %d entries) BEGIN ===\n"
-            "%s\n=== recipe datapoint dump END ===",
-            self.device.dsn,
-            len(lines),
-            "\n".join(lines),
-        )
+        names = [line.partition(" = ")[0] for line in recipe_dump_lines(self.data)]
+        _LOGGER.warning("Recipe datapoints detected: %s", ", ".join(names))
 
     def _learned_storage_data(self) -> dict:
         """Callback for the debounced Store save."""
@@ -713,13 +671,14 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return
             if self.learned_wake_frame != raw_b64:
                 self.learned_wake_frame = raw_b64
-                _LOGGER.info("Learned %s wake/power-on frame: %s", self.profile.key, raw_b64)
+                self._restore_device_app_id()
+                _LOGGER.info("Learned a %s wake/power-on frame", self.profile.key)
                 self._store.async_delay_save(
                     self._learned_storage_data, RECIPE_STORE_SAVE_DELAY
                 )
             return
 
-        if ftype != "beverage" or decoded.get("style") != "eletta":
+        if ftype != "beverage":
             return
         bev_hex = decoded.get("beverage_id")
         if not bev_hex:
@@ -728,6 +687,11 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             bev_id = int(bev_hex, 16)
         except (ValueError, TypeError):
             return
+        if decoded.get("action") == ACTION_STOP:
+            if self.active_beverage_id == bev_id:
+                self.active_beverage_id = None
+        else:
+            self.active_beverage_id = bev_id
         table = (
             self.learned_stop_frames
             if decoded.get("action") == ACTION_STOP
@@ -735,13 +699,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         if table.get(bev_id) != raw_b64:
             table[bev_id] = raw_b64
+            self._restore_device_app_id()
             _LOGGER.info(
-                "Learned %s %s frame for beverage 0x%02x (%s): %s",
+                "Learned a %s %s frame for beverage 0x%02x (%s)",
                 self.profile.key,
                 "stop" if decoded.get("action") == ACTION_STOP else "start",
                 bev_id,
                 decoded.get("beverage_name"),
-                raw_b64,
             )
             self._store.async_delay_save(
                 self._learned_storage_data, RECIPE_STORE_SAVE_DELAY
@@ -758,37 +722,72 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             learned = table.get(beverage_id)
             value = self.profile.beverage_value(beverage_id, action, learned)
             if value is None:
+                if self.profile.learns_from_app:
+                    raise HomeAssistantError(
+                        "This command is unavailable until its frame has been learned "
+                        "from the official Coffee Link app"
+                    )
                 value = build_and_encode(beverage_id, action)
-                _LOGGER.warning(
-                    "No learned %s frame for beverage 0x%02x yet (%s). Trigger this "
-                    "drink once from the official Coffee Link app so Home Assistant "
-                    "can capture and replay its exact bytes. Sending a best-effort "
-                    "frame meanwhile (the machine will likely ignore it).",
-                    "stop" if action == ACTION_STOP else "start",
-                    beverage_id,
-                    self.profile.label,
-                )
-            else:
-                _LOGGER.info(
-                    "Sending %s beverage 0x%02x (%s): %s",
-                    self.profile.key,
-                    beverage_id,
-                    "stop" if action == ACTION_STOP else "start",
-                    value,
-                )
-            self._record_sent(value)
-            prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
-            _LOGGER.info(
-                "Sending beverage cmd via %s: bev_id=0x%02x action=%d value=%s",
-                prop,
-                beverage_id,
-                action,
+            await self._send_property_command(
                 value,
+                f"beverage 0x{beverage_id:02x} action {action}",
             )
-            await self.client.async_set_property_value(self.device.dsn, prop, value)
-            await self.async_request_refresh()
 
-        await self._with_cloud_session(_do)
+        await self._run_command_transaction(_do)
+        if action == ACTION_STOP:
+            if self.active_beverage_id == beverage_id:
+                self.active_beverage_id = None
+        else:
+            self.active_beverage_id = beverage_id
+        self.async_update_listeners()
+
+    async def async_stop_active_beverage(self) -> None:
+        """Stop the tracked active beverage without guessing an identifier."""
+        if self.active_beverage_id is None:
+            self.last_command_result = "rejected"
+            raise HomeAssistantError(
+                "The active beverage is unknown; start a drink before using Stop"
+            )
+        await self.async_send_beverage(self.active_beverage_id, ACTION_STOP)
+
+    async def _run_command_transaction(
+        self, send_fn: Callable[[], Awaitable[None]]
+    ) -> None:
+        """Serialize one complete connect, write and confirmation transaction."""
+        if self._command_lock.locked():
+            self.last_command_result = "rejected"
+            raise HomeAssistantError(
+                "Another coffee maker command is still in progress; try again shortly"
+            )
+
+        async with self._command_lock:
+            self.last_command_result = "pending"
+            try:
+                await self._with_cloud_session(send_fn)
+            except ConfigEntryAuthFailed:
+                self.last_command_result = "rejected"
+                raise
+            except AuthError as err:
+                self.last_command_result = "rejected"
+                raise ConfigEntryAuthFailed(
+                    "Coffee Link credentials are no longer valid"
+                ) from err
+            except HomeAssistantError:
+                if self.last_command_result != "timed_out":
+                    self.last_command_result = "rejected"
+                raise
+            except (CloudError, asyncio.TimeoutError) as err:
+                self.last_command_result = "timed_out"
+                raise HomeAssistantError(
+                    "The Coffee Link cloud command could not be completed"
+                ) from err
+            except Exception as err:
+                self.last_command_result = "rejected"
+                raise HomeAssistantError(
+                    "The coffee maker command failed before completion"
+                ) from err
+            if self.last_command_result not in {"sent", "acknowledged"}:
+                self.last_command_result = "sent"
 
     async def async_send_wake(self) -> None:
         """Send the WAKE / power-on command to bring the machine out of standby."""
@@ -797,34 +796,25 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             async def _do() -> None:
                 value = self.profile.wake_value(self.learned_wake_frame)
                 if value is None:
+                    if self.profile.learns_from_app:
+                        raise HomeAssistantError(
+                            "Wake is unavailable until its frame has been learned "
+                            "from the official Coffee Link app"
+                        )
                     value = build_wake_encoded()
-                    _LOGGER.warning(
-                        "No learned wake frame for this %s yet. Power the machine on once "
-                        "from the official Coffee Link app so Home Assistant can capture "
-                        "and replay it. Sending a best-effort synthesized wake meanwhile "
-                        "(the machine will likely ignore it - it lacks the device "
-                        "signature the app appends).",
-                        self.profile.label,
-                    )
-                self._record_sent(value)
-                prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
-                _LOGGER.info("Sending WAKE cmd via %s: %s", prop, value)
-                await self.client.async_set_property_value(self.device.dsn, prop, value)
-                await self.async_request_refresh()
+                await self._send_property_command(value, "WAKE command")
 
-            await self._with_cloud_session(_do)
+            await self._run_command_transaction(_do)
             return
 
         async def _do() -> None:
             await self._maybe_send_session_refresh()
-            value = self._wake_command_value()
-            await self._send_property_command(value, "WAKE cmd")
+            await self._send_property_command(self._wake_command_value(), "WAKE command")
 
-        await self._with_cloud_session(_do)
+        await self._run_command_transaction(_do)
 
     def _learned_device_signature(self) -> bytes | None:
-        """The 4-byte per-device signature carried by learned app frames (the
-        wake frame first, else any learned beverage frame)."""
+        """Return the device signature carried by any learned app frame."""
         from .command_builder import device_signature_from_frame
 
         for frame in (
@@ -832,54 +822,53 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             *self.learned_start_frames.values(),
             *self.learned_stop_frames.values(),
         ):
-            sig = device_signature_from_frame(frame)
-            if sig is not None:
-                return sig
+            signature = device_signature_from_frame(frame)
+            if signature is not None:
+                return signature
         return None
 
-    async def async_send_standby(self) -> None:
-        """Send the STANDBY / power-off command (84 0f, params 01 01).
+    def _restore_device_app_id(self) -> None:
+        """Use the learned per-device signature for ECAM cloud sessions."""
+        if not self.profile.uses_cloud_session:
+            return
+        signature = self._learned_device_signature()
+        if signature is None:
+            return
+        app_id = normalize_signed_app_id(int.from_bytes(signature, "big"))
+        self._default_app_id = app_id
+        self._integration_app_id = app_id
 
-        Always synthesized - the official app has no power-off control to
-        capture. Validated live on the reference Soul; on learn-and-replay
-        models the per-device signature from a learned frame is appended.
-        """
+    async def async_send_standby(self) -> None:
+        """Send the STANDBY / power-off command."""
         if not self.profile.uses_cloud_session:
 
             async def _do() -> None:
                 value = self.profile.standby_value(self._learned_device_signature())
                 if value is None:
+                    if self.profile.learns_from_app:
+                        raise HomeAssistantError(
+                            "Standby is unavailable until a device signature has been learned"
+                        )
                     value = build_standby_encoded()
-                    _LOGGER.warning(
-                        "No learned frame for this %s yet, so the standby command is "
-                        "sent without the device signature and the machine may ignore "
-                        "it. Trigger any command once from the official Coffee Link "
-                        "app (e.g. power-on) so Home Assistant can learn the signature.",
-                        self.profile.label,
-                    )
-                self._record_sent(value)
-                prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
-                _LOGGER.info("Sending STANDBY cmd via %s: %s", prop, value)
-                await self.client.async_set_property_value(self.device.dsn, prop, value)
-                await self.async_request_refresh()
+                await self._send_property_command(value, "STANDBY command")
 
-            await self._with_cloud_session(_do)
+            await self._run_command_transaction(_do)
             return
 
         async def _do() -> None:
-            value = self._standby_command_value()
-            await self._send_property_command(value, "STANDBY cmd")
+            await self._send_property_command(
+                self._standby_command_value(), "STANDBY command"
+            )
 
-        await self._with_cloud_session(_do)
+        await self._run_command_transaction(_do)
 
     async def async_send_raw(self, value: str) -> None:
-        """Send a raw base64 command on the resolved command channel (advanced)."""
+        """Validate and send a raw base64 command (administrator-only action)."""
+        if "error" in decode_command(value):
+            self.last_command_result = "rejected"
+            raise HomeAssistantError("The raw command is not a valid base64 protocol frame")
 
         async def _do() -> None:
-            self._record_sent(value)
-            prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
-            _LOGGER.info("Sending RAW cmd via %s: %s", prop, value)
-            await self.client.async_set_property_value(self.device.dsn, prop, value)
-            await self.async_request_refresh()
+            await self._send_property_command(value, "RAW command")
 
-        await self._with_cloud_session(_do)
+        await self._run_command_transaction(_do)

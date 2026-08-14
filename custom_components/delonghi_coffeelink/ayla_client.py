@@ -21,7 +21,6 @@ import aiohttp
 from .const import (
     APP_ID,
     APP_SECRET,
-    APP_ID_PROPERTY,
     AYLA_EU_ADS_URL,
     AYLA_EU_USER_URL,
     CLOUD_HTTP_RETRY_BACKOFF,
@@ -248,7 +247,7 @@ class DelonghiAylaClient:
                 raise AuthError(f"Ayla SSO failed (HTTP {resp.status}): {text[:300]}")
             body = await resp.json()
         if "access_token" not in body:
-            raise AuthError(f"Ayla SSO: no access_token in response: {body}")
+            raise AuthError("Ayla SSO response did not contain an access token")
         self._access_token = body["access_token"]
         self._refresh_token = body.get("refresh_token")
         self._expires_at = time.time() + body.get("expires_in", 3600)
@@ -337,10 +336,10 @@ class DelonghiAylaClient:
             raise CloudError(f"get_property {property_name}: unexpected response {data!r}")
         raw = prop.get("value")
         _LOGGER.debug(
-            "Property %s dsn=%s value=%s",
+            "Property %s dsn=%s value_hint=%s",
             property_name,
             dsn,
-            raw if property_name == APP_ID_PROPERTY else self._value_hint(raw),
+            self._value_hint(raw),
         )
         return prop
 
@@ -357,11 +356,9 @@ class DelonghiAylaClient:
             + integration_app_id_to_bytes(integration_app_id)
         ).decode("utf-8")
         _LOGGER.info(
-            "POST cloud session connect dsn=%s property=%s app_id=%d (0x%08x) payload_len=%d",
+            "POST cloud session connect dsn=%s property=%s payload_len=%d",
             dsn,
             connected_property,
-            integration_app_id,
-            integration_app_id & 0xFFFFFFFF,
             len(payload),
         )
         url = (

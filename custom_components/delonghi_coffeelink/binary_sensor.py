@@ -49,7 +49,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinators: list[DelonghiCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data.coordinators
     entities: list[BinarySensorEntity] = []
     for coord in coordinators:
         # Maintenance bitfields are ECAM-only; never create these on Soul.
