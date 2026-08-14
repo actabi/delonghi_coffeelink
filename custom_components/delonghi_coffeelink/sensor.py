@@ -10,22 +10,25 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import EntityCategory, UnitOfVolume
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .ayla_client import normalize_signed_app_id
-from .counters import counter_breakdown, parse_counter_value
+from .counters import counter_breakdown, parse_counter_value, parse_water_volume_liters
 from .const import (
     APP_ID_PROPERTY,
+    CONNECTION_STATUS_OPTIONS,
     COUNTER_SENSORS,
     DOMAIN,
     INFO_SENSORS,
     INTEGRATION_CLOUD_APP_ID,
     MANUFACTURER,
+    MACHINE_STATUS_OPTIONS,
+    normalize_connection_status,
 )
 from .coordinator import DelonghiCoordinator
 
@@ -119,10 +122,20 @@ class DelonghiCounterSensor(_Base):
     ) -> None:
         super().__init__(coord, key, icon)
         self._prop_name = prop_name
+        self._key = key
         self._logged_unparseable = False
+        if key in {"water_total_quantity", "water_filter_quantity"}:
+            self._attr_device_class = SensorDeviceClass.WATER
+            self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
+            self._attr_suggested_display_precision = 3
+            self._attr_state_class = (
+                SensorStateClass.TOTAL
+                if key == "water_total_quantity"
+                else SensorStateClass.TOTAL_INCREASING
+            )
 
     @property
-    def native_value(self) -> int | None:
+    def native_value(self) -> int | float | None:
         prop = (self.coordinator.data or {}).get(self._prop_name)
         if not prop:
             return None
@@ -133,7 +146,11 @@ class DelonghiCounterSensor(_Base):
         # some as a JSON object of per-recipe sub-counts. parse_counter_value
         # handles both; an unparseable scalar yields None and is logged once so
         # the format can be reported and the parser extended.
-        result = parse_counter_value(val)
+        result = (
+            parse_water_volume_liters(val)
+            if self._key in {"water_total_quantity", "water_filter_quantity"}
+            else parse_counter_value(val)
+        )
         if result is None and not self._logged_unparseable:
             self._logged_unparseable = True
             _LOGGER.warning(
@@ -192,10 +209,12 @@ class DelonghiConnectionSensor(_Base):
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord, "connection_status", "mdi:cloud")
+        self._attr_device_class = SensorDeviceClass.ENUM
+        self._attr_options = list(CONNECTION_STATUS_OPTIONS)
 
     @property
     def native_value(self) -> str:
-        return self.coordinator.device.connection_status
+        return normalize_connection_status(self.coordinator.device.connection_status)
 
 
 class DelonghiMachineStatusSensor(_Base):
@@ -207,12 +226,14 @@ class DelonghiMachineStatusSensor(_Base):
 
     def __init__(self, coord: DelonghiCoordinator) -> None:
         super().__init__(coord, "machine_status", "mdi:coffee-maker")
+        self._attr_device_class = SensorDeviceClass.ENUM
+        self._attr_options = list(MACHINE_STATUS_OPTIONS)
 
     @property
     def native_value(self) -> str | None:
         monitor = self.coordinator.monitor or {}
         if "error" in monitor:
-            return None
+            return "unknown"
         return monitor.get("status_name")
 
     @property

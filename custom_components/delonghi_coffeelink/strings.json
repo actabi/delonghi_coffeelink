@@ -131,10 +131,31 @@
         "name": "Last Connected"
       },
       "connection_status": {
-        "name": "Connection Status"
+        "name": "Cloud Connection",
+        "state": {
+          "online": "Connected",
+          "offline": "Disconnected",
+          "unknown": "Unknown"
+        }
       },
       "machine_status": {
-        "name": "Machine Status"
+        "name": "Machine Status",
+        "state": {
+          "standby": "Standby",
+          "waking_up": "Waking up",
+          "going_to_sleep": "Going to standby",
+          "descaling": "Descaling",
+          "preparing_steam": "Preparing steam",
+          "recovering": "Recovering",
+          "ready": "Ready",
+          "rinsing": "Rinsing",
+          "preparing_milk": "Preparing milk",
+          "dispensing_hot_water": "Dispensing hot water",
+          "cleaning_milk": "Cleaning milk system",
+          "preparing_chocolate": "Preparing chocolate",
+          "preparing_milk_alt": "Preparing milk",
+          "unknown": "Unknown"
+        }
       },
       "cloud_session_app_id": {
         "name": "Cloud Session app_id"
@@ -232,6 +253,65 @@
       },
       "filter_change_needed": {
         "name": "Filter change needed"
+      }
+    }
+  },
+  "services": {
+    "start_beverage": {
+      "name": "Start beverage",
+      "description": "Start preparing a beverage on the selected De'Longhi coffee machine.",
+      "fields": {
+        "beverage": {
+          "name": "Beverage",
+          "description": "Beverage recipe to prepare."
+        }
+      }
+    },
+    "stop_beverage": {
+      "name": "Stop beverage",
+      "description": "Stop preparation of the selected beverage.",
+      "fields": {
+        "beverage": {
+          "name": "Beverage",
+          "description": "Beverage recipe whose preparation should be stopped."
+        }
+      }
+    },
+    "send_raw_command": {
+      "name": "Send raw command",
+      "description": "Send an advanced base64-encoded binary command to the coffee machine.",
+      "fields": {
+        "value_base64": {
+          "name": "Command (base64)",
+          "description": "Base64 representation of the binary command bytes."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "espresso": "Espresso",
+        "coffee": "Coffee",
+        "long_coffee": "Long Coffee",
+        "double_espresso": "Double Espresso",
+        "doppio": "Doppio+",
+        "americano": "Americano",
+        "cappuccino": "Cappuccino",
+        "latte_macchiato": "Latte Macchiato",
+        "caffelatte": "Caffe Latte",
+        "flat_white": "Flat White",
+        "espresso_macchiato": "Espresso Macchiato",
+        "hot_milk": "Hot Milk",
+        "cappuccino_doppio": "Cappuccino Doppio+",
+        "cappuccino_reverse": "Cappuccino Reverse",
+        "hot_water": "Hot Water",
+        "tea": "Tea",
+        "coffee_pot": "Coffee Pot",
+        "cortado": "Cortado",
+        "long_black": "Long Black",
+        "mug_to_go": "Mug to Go",
+        "brew_over_ice": "Brew Over Ice"
       }
     }
   }
