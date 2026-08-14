@@ -1,216 +1,183 @@
 {
+  "config": {
+    "step": {
+      "user": {
+        "title": "De'Longhi Coffee Link",
+        "description": "Zadejte přihlašovací údaje k účtu Coffee Link. Použijte stejné údaje jako v mobilní aplikaci Coffee Link.",
+        "data": {
+          "email": "E-mail",
+          "password": "Heslo"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Neplatný e-mail nebo heslo.",
+      "cannot_connect": "Nepodařilo se připojit ke cloudu De'Longhi.",
+      "no_devices": "U tohoto účtu nebyl nalezen žádný kávovar De'Longhi.",
+      "unknown": "Došlo k neočekávané chybě."
+    },
+    "abort": {
+      "already_configured": "Tento účet je již nakonfigurován."
+    }
+  },
   "entity": {
     "sensor": {
-      "total_beverages": {
-        "name": "Celkem Nápoje"
-      },
-      "total_espresso": {
-        "name": "Celkem Espresso"
-      },
-      "total_milk_drinks": {
-        "name": "Celkem Mléčné nápoje"
-      },
-      "total_water": {
-        "name": "Celkem Voda"
-      },
-      "total_espresso_alt": {
-        "name": "Celkem Espresso Alt"
-      },
-      "total_coffee": {
-        "name": "Celkem Coffee"
-      },
-      "total_long_coffee": {
-        "name": "Celkem Long Coffee"
-      },
-      "total_doppio": {
-        "name": "Celkem Doppio+"
-      },
-      "total_americano": {
-        "name": "Celkem Americano"
-      },
-      "total_cappuccino": {
-        "name": "Celkem Cappuccino"
-      },
-      "total_latte_macchiato": {
-        "name": "Celkem Latte Macchiato"
-      },
-      "total_caffelatte": {
-        "name": "Celkem Caffe Latte"
-      },
-      "total_flat_white": {
-        "name": "Celkem Flat White"
-      },
-      "total_espresso_macchiato": {
-        "name": "Celkem Espresso Macchiato"
-      },
-      "total_hot_milk": {
-        "name": "Celkem Hot Milk"
-      },
-      "total_cappuccino_doppio": {
-        "name": "Celkem Cappuccino Doppio+"
-      },
-      "total_cappuccino_reverse": {
-        "name": "Celkem Cappuccino Reverse"
-      },
-      "total_hot_water": {
-        "name": "Celkem Hot Voda"
-      },
-      "total_tea": {
-        "name": "Celkem Tea"
-      },
-      "total_coffee_pot": {
-        "name": "Celkem Konvice kávy"
-      },
-      "total_brew_over_ice": {
-        "name": "Celkem Zchlazeno ledem"
-      },
-      "total_mug_hot": {
-        "name": "Celkem Horké do hrnku"
-      },
-      "total_mug_cold": {
-        "name": "Celkem Studené do hrnku"
-      },
-      "total_iced_bev": {
-        "name": "Celkem Ledové Nápoje"
-      },
-      "total_mug_bev": {
-        "name": "Celkem Hrnek Nápoje"
-      },
-      "total_mug_iced_bev": {
-        "name": "Celkem Hrnek Ledové Nápoje"
-      },
-      "total_cold_brew_bev": {
-        "name": "Celkem Cold Brew Nápoje"
-      },
-      "grounds_counter": {
-        "name": "Počítadlo sedliny"
-      },
-      "total_descales": {
-        "name": "Celkem Odvápnění"
-      },
-      "water_total_quantity": {
-        "name": "Voda Celkem Množství"
-      },
-      "total_filters_used": {
-        "name": "Celkem Použitých filtrů"
-      },
-      "water_filter_quantity": {
-        "name": "Voda Filtr Množství"
-      },
-      "descale_status": {
-        "name": "Stav odvápnění"
-      },
-      "water_hardness": {
-        "name": "Voda Tvrdost"
-      },
-      "software_version": {
-        "name": "Verze softwaru"
-      },
-      "last_connected": {
-        "name": "Poslední připojení"
-      },
+      "total_beverages": { "name": "Počet nápojů" },
+      "total_espresso": { "name": "Počet espress" },
+      "total_milk_drinks": { "name": "Počet mléčných nápojů" },
+      "total_water": { "name": "Počet výdejů vody" },
+      "total_espresso_alt": { "name": "Alternativní počet espress" },
+      "total_coffee": { "name": "Počet káv" },
+      "total_long_coffee": { "name": "Počet nápojů Long Coffee" },
+      "total_doppio": { "name": "Počet nápojů Doppio+" },
+      "total_americano": { "name": "Počet nápojů Americano" },
+      "total_cappuccino": { "name": "Počet nápojů Cappuccino" },
+      "total_latte_macchiato": { "name": "Počet nápojů Latte Macchiato" },
+      "total_caffelatte": { "name": "Počet nápojů Caffe Latte" },
+      "total_flat_white": { "name": "Počet nápojů Flat White" },
+      "total_espresso_macchiato": { "name": "Počet nápojů Espresso Macchiato" },
+      "total_hot_milk": { "name": "Počet výdejů horkého mléka" },
+      "total_cappuccino_doppio": { "name": "Počet nápojů Cappuccino Doppio+" },
+      "total_cappuccino_reverse": { "name": "Počet nápojů Cappuccino Reverse" },
+      "total_hot_water": { "name": "Počet výdejů horké vody" },
+      "total_tea": { "name": "Počet čajů" },
+      "total_coffee_pot": { "name": "Počet konvic kávy" },
+      "total_brew_over_ice": { "name": "Počet nápojů Brew Over Ice" },
+      "total_mug_hot": { "name": "Počet horkých nápojů do hrnku" },
+      "total_mug_cold": { "name": "Počet studených nápojů do hrnku" },
+      "total_iced_bev": { "name": "Počet ledových nápojů" },
+      "total_mug_bev": { "name": "Počet nápojů do hrnku" },
+      "total_mug_iced_bev": { "name": "Počet ledových nápojů do hrnku" },
+      "total_cold_brew_bev": { "name": "Počet nápojů Cold Brew" },
+      "grounds_counter": { "name": "Počet porcí sedliny" },
+      "total_descales": { "name": "Počet odvápnění" },
+      "water_total_quantity": { "name": "Spotřeba vody celkem" },
+      "total_filters_used": { "name": "Počet použitých filtrů" },
+      "water_filter_quantity": { "name": "Voda proteklá filtrem" },
+      "descale_status": { "name": "Stav odvápnění" },
+      "water_hardness": { "name": "Tvrdost vody" },
+      "software_version": { "name": "Verze softwaru" },
+      "last_connected": { "name": "Poslední připojení" },
       "connection_status": {
-        "name": "Stav připojení"
+        "name": "Připojení ke cloudu",
+        "state": {
+          "online": "Připojeno",
+          "offline": "Odpojeno",
+          "unknown": "Neznámý stav"
+        }
       },
       "machine_status": {
-        "name": "Stav kávovaru"
+        "name": "Stav kávovaru",
+        "state": {
+          "standby": "Pohotovostní režim",
+          "waking_up": "Zapínání",
+          "going_to_sleep": "Vypínání",
+          "descaling": "Odvápňování",
+          "preparing_steam": "Příprava páry",
+          "recovering": "Obnovování provozu",
+          "ready": "Připraven",
+          "rinsing": "Proplachování",
+          "preparing_milk": "Příprava mléka",
+          "dispensing_hot_water": "Výdej horké vody",
+          "cleaning_milk": "Čištění mléčného systému",
+          "preparing_chocolate": "Příprava čokolády",
+          "preparing_milk_alt": "Příprava mléka",
+          "unknown": "Neznámý stav"
+        }
       },
-      "cloud_session_app_id": {
-        "name": "ID cloudové relace"
-      },
-      "last_captured_command": {
-        "name": "Poslední zachycený příkaz"
-      }
+      "cloud_session_app_id": { "name": "ID cloudové relace" },
+      "last_captured_command": { "name": "Poslední zachycený příkaz" }
     },
     "button": {
-      "start_espresso": {
-        "name": "Espresso"
-      },
-      "start_coffee": {
-        "name": "Coffee"
-      },
-      "start_long_coffee": {
-        "name": "Velká káva"
-      },
-      "start_double_espresso": {
-        "name": "Dvojité Espresso"
-      },
-      "start_doppio": {
-        "name": "Doppio+"
-      },
-      "start_americano": {
-        "name": "Americano"
-      },
-      "start_cappuccino": {
-        "name": "Cappuccino"
-      },
-      "start_latte_macchiato": {
-        "name": "Latte Macchiato"
-      },
-      "start_caffelatte": {
-        "name": "Caffe Latte"
-      },
-      "start_flat_white": {
-        "name": "Flat White"
-      },
-      "start_espresso_macchiato": {
-        "name": "Espresso Macchiato"
-      },
-      "start_hot_milk": {
-        "name": "Horké mléko"
-      },
-      "start_cappuccino_doppio": {
-        "name": "Cappuccino Doppio+"
-      },
-      "start_cappuccino_reverse": {
-        "name": "Cappuccino Reverse"
-      },
-      "start_hot_water": {
-        "name": "Horká voda"
-      },
-      "start_tea": {
-        "name": "Čaj"
-      },
-      "start_coffee_pot": {
-        "name": "Konvice kávy"
-      },
-      "start_cortado": {
-        "name": "Cortado"
-      },
-      "start_long_black": {
-        "name": "Long Black"
-      },
-      "start_mug_to_go": {
-        "name": "S sebou do hrnku"
-      },
-      "start_brew_over_ice": {
-        "name": "Zchlazeno ledem"
-      },
-      "wake": {
-        "name": "Probudit"
-      },
-      "standby": {
-        "name": "Pohotovostní režim"
-      },
-      "stop": {
-        "name": "Zastavit"
-      },
-      "dump_recipes": {
-        "name": "Vypsat data receptů"
-      }
+      "start_espresso": { "name": "Espresso" },
+      "start_coffee": { "name": "Coffee" },
+      "start_long_coffee": { "name": "Long Coffee" },
+      "start_double_espresso": { "name": "Double Espresso" },
+      "start_doppio": { "name": "Doppio+" },
+      "start_americano": { "name": "Americano" },
+      "start_cappuccino": { "name": "Cappuccino" },
+      "start_latte_macchiato": { "name": "Latte Macchiato" },
+      "start_caffelatte": { "name": "Caffe Latte" },
+      "start_flat_white": { "name": "Flat White" },
+      "start_espresso_macchiato": { "name": "Espresso Macchiato" },
+      "start_hot_milk": { "name": "Horké mléko" },
+      "start_cappuccino_doppio": { "name": "Cappuccino Doppio+" },
+      "start_cappuccino_reverse": { "name": "Cappuccino Reverse" },
+      "start_hot_water": { "name": "Horká voda" },
+      "start_tea": { "name": "Čaj" },
+      "start_coffee_pot": { "name": "Konvice kávy" },
+      "start_cortado": { "name": "Cortado" },
+      "start_long_black": { "name": "Long Black" },
+      "start_mug_to_go": { "name": "Mug to Go" },
+      "start_brew_over_ice": { "name": "Brew Over Ice" },
+      "wake": { "name": "Zapnout" },
+      "standby": { "name": "Vypnout" },
+      "stop": { "name": "Zastavit přípravu" },
+      "dump_recipes": { "name": "Vypsat data receptů" }
     },
     "binary_sensor": {
-      "water_tank_empty": {
-        "name": "Prázdná nádržka na vodu"
-      },
-      "waste_container_full": {
-        "name": "Plný odpadní zásobník"
-      },
-      "decalcification_needed": {
-        "name": "Nutné odvápnění"
-      },
-      "filter_change_needed": {
-        "name": "Nutná výměna filtru"
+      "water_tank_empty": { "name": "Prázdná nádržka na vodu" },
+      "waste_container_full": { "name": "Plný zásobník sedliny" },
+      "decalcification_needed": { "name": "Nutné odvápnění" },
+      "filter_change_needed": { "name": "Nutná výměna filtru" }
+    }
+  },
+  "services": {
+    "start_beverage": {
+      "name": "Spustit přípravu nápoje",
+      "description": "Spustí přípravu nápoje na vybraném kávovaru De'Longhi.",
+      "fields": {
+        "beverage": {
+          "name": "Nápoj",
+          "description": "Recept nápoje, který se má připravit."
+        }
+      }
+    },
+    "stop_beverage": {
+      "name": "Zastavit přípravu nápoje",
+      "description": "Zastaví přípravu vybraného nápoje.",
+      "fields": {
+        "beverage": {
+          "name": "Nápoj",
+          "description": "Recept nápoje, jehož příprava se má zastavit."
+        }
+      }
+    },
+    "send_raw_command": {
+      "name": "Odeslat nezpracovaný příkaz",
+      "description": "Odešle kávovaru pokročilý binární příkaz zakódovaný ve formátu base64.",
+      "fields": {
+        "value_base64": {
+          "name": "Příkaz (base64)",
+          "description": "Binární bajty příkazu zakódované ve formátu base64."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "espresso": "Espresso",
+        "coffee": "Coffee",
+        "long_coffee": "Long Coffee",
+        "double_espresso": "Double Espresso",
+        "doppio": "Doppio+",
+        "americano": "Americano",
+        "cappuccino": "Cappuccino",
+        "latte_macchiato": "Latte Macchiato",
+        "caffelatte": "Caffe Latte",
+        "flat_white": "Flat White",
+        "espresso_macchiato": "Espresso Macchiato",
+        "hot_milk": "Horké mléko",
+        "cappuccino_doppio": "Cappuccino Doppio+",
+        "cappuccino_reverse": "Cappuccino Reverse",
+        "hot_water": "Horká voda",
+        "tea": "Čaj",
+        "coffee_pot": "Konvice kávy",
+        "cortado": "Cortado",
+        "long_black": "Long Black",
+        "mug_to_go": "Mug to Go",
+        "brew_over_ice": "Brew Over Ice"
       }
     }
   }
