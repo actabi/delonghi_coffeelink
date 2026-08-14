@@ -8,6 +8,13 @@
           "email": "Email",
           "password": "Password"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect DeLonghi Coffee Link",
+        "description": "Enter the current password for {email}.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This account is already configured."
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Reauthentication was successful."
     }
   },
   "entity": {
@@ -137,10 +145,10 @@
         "name": "Machine Status"
       },
       "cloud_session_app_id": {
-        "name": "Cloud Session app_id"
+        "name": "Cloud Session Holder"
       },
       "last_captured_command": {
-        "name": "Last Captured Command"
+        "name": "Last Command Result"
       }
     },
     "button": {
