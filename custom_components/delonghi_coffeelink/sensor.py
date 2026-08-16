@@ -26,6 +26,7 @@ from .const import (
     INFO_SENSORS,
     INTEGRATION_CLOUD_APP_ID,
     MANUFACTURER,
+    MONITOR_PROPERTY,
 )
 from .coordinator import DelonghiCoordinator
 
@@ -222,6 +223,13 @@ class DelonghiMachineStatusSensor(_Base):
         for key in ("status", "progress", "action", "accessory", "error"):
             if key in monitor:
                 attrs[key] = monitor[key]
+
+        prop = (self.coordinator.data or {}).get(MONITOR_PROPERTY)
+        if isinstance(prop, dict):
+            updated_at = prop.get("data_updated_at")
+            if updated_at:
+                attrs["source_updated_at"] = updated_at
+        
         # Surface the raw switches/alarms bitfields as hex for troubleshooting,
         # but only on ECAM models: the monitor parser may fill these keys for any
         # model, so this uses_cloud_session gate is what keeps them off the Soul.
