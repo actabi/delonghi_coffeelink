@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.17] - 2026-08-19
+
+### Fixed
+- **Eletta Explore ignored every command** (`#15`, reported and verified live by
+  `DouglasPavanPy` on a 450.65.S). The cloud session was registered with a fixed
+  made-up id (`INTEGRATION_CLOUD_APP_ID = 0xC0FFEE11`, identical for every user
+  and every machine). Ayla accepted it, `app_id` confirmed it, commands returned
+  HTTP 200/201 with a valid CRC - and the machine did nothing, silently. An ECAM
+  only executes commands from a session registered with **its own 4-byte device
+  signature**, the value it appends to every frame it exchanges with the
+  official app. That signature is now read from any learned frame and used as
+  the session id (and as the wake/standby session tail); the constant remains
+  only as a fallback until a frame has been learned. Because learned frames are
+  persisted, a clean restart with the official app closed uses the right id
+  immediately. This also explains the old "it works right after using the
+  official app, then stops" behaviour: the app's session was mislabelled as
+  foreign, adopted transiently, then reverted to the broken constant.
+- **Beverages whose recipe does not end with `01 0a` could never be learned**
+  (`#15`). That 2-byte trailer was treated as an Eletta dialect marker, but it
+  is recipe data and varies per drink (Coffee `0x02` ends with `01 06`), so its
+  frame was decoded as a Soul frame and dropped by the learning gate - the
+  button then logged "trigger this drink once from the official app" forever,
+  even though the frame had been captured and was valid. The dialect is now
+  decided by the frame shape, and a captured frame is learned whenever it is a
+  beverage with a valid CRC and a known beverage id. Frames matching what this
+  integration would emit itself are still ignored, so a best-effort fallback
+  echoed back on the wire is never mistaken for the app's bytes.
+
+### Changed
+- The `Cloud Session app_id` diagnostic compares against the coordinator's own
+  session id and exposes `session_id_source` (`device_signature` /
+  `default_constant`).
+- Cloud-session confirmation now waits for the id actually POSTed, so learning a
+  frame mid-connect cannot leave a command waiting for an id never registered.
+
+### Notes
+- The PrimaDonna Soul (`DL-millcore`) is untouched: it holds no cloud session and
+  learns no frame, so its session id stays the constant and its command bytes are
+  unchanged. Covered by regression tests.
+
+## [0.3.16] - 2026-06-22
+
+### Added
+- Russian translations (`translations/ru.json`). Credit: `TischenkoArseny` (#12).
+
+## [0.3.15] - 2026-06-18
+
+### Added
+- **Eletta maintenance binary sensors**: water tank empty, waste container full,
+  decalcification needed, filter change needed (`device_class: problem`), plus
+  MonitorV2 `switches`/`alarms` parsing surfaced as attributes on Machine Status.
+  Gated on the ECAM cloud-session profile, so the Soul is unaffected.
+  Credit: `TischenkoArseny` (#9).
+
 ## [0.3.14] - 2026-06-17
 
 ### Added

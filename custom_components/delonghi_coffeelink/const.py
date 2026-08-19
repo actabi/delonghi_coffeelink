@@ -27,9 +27,12 @@ COMMAND_PROPERTY_CANDIDATES = ["data_request", "app_data_request"]
 RESPONSE_PROPERTY_CANDIDATES = ["data_response", "app_data_response"]
 CONNECTED_PROPERTY_CANDIDATES = ["device_connected", "app_device_connected"]
 
-# Stable HA client id for app_device_connected (DlghIoT uses 0xC0FFEE11).
-# Used ONLY for session registration and property app_id checks.
-# NOT the 4-byte device signature appended to learned command frames.
+# FALLBACK cloud-session id for app_device_connected (DlghIoT uses 0xC0FFEE11).
+# ECAM machines only execute commands from a session registered with THEIR OWN
+# 4-byte device signature, so the coordinator derives the real id from a learned
+# app frame (see command_builder.app_id_from_signature / issue #15). This
+# constant is only what we register with before any frame has been learned - a
+# session opened with it is accepted by Ayla and then ignored by the machine.
 INTEGRATION_CLOUD_APP_ID = 0xC0FFEE11
 
 APP_ID_PROPERTY = "app_id"  # machine property: current session holder

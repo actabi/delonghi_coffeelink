@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_signed_app_id
 from .command_builder import (
+    app_id_from_signature,
     builder_structural_b64,
     build_session_refresh_encoded,
     build_standby_encoded,
@@ -23,7 +24,9 @@ from .command_builder import (
     build_wake_with_session_tail_encoded,
     decode_command,
     deserialize_learned_frames,
+    first_device_signature,
     is_wake_power_frame,
+    learnable_beverage_id,
     recipe_dump_lines,
     replay_with_timestamp,
     serialize_learned_frames,
@@ -81,6 +84,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # session, adopted to ride it); it reverts to the default once the app
         # releases the session - see _update_session_from_props.
         self._default_app_id = normalize_signed_app_id(INTEGRATION_CLOUD_APP_ID)
+        # The machine's own cloud id, derived from the device signature carried by
+        # any learned app frame. It is what an ECAM actually honours; the constant
+        # above is only a fallback until a frame has been learned (issue #15).
+        self._device_app_id: int | None = None
         self._integration_app_id = self._default_app_id
         self._last_connect_at: float = 0
         self._session_confirmed = False
@@ -127,8 +134,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._session_cold_task.cancel()
         self._session_cold_task = None
         self._last_connect_at = 0
-        if self._integration_app_id != self._default_app_id:
-            self._integration_app_id = self._default_app_id
+        if self._integration_app_id != self._own_app_id():
+            self._integration_app_id = self._own_app_id()
         await super().async_shutdown()
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -229,6 +236,54 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # immediately.
     # ------------------------------------------------------------------ #
 
+    @property
+    def own_cloud_app_id(self) -> int:
+        """The cloud-session id this integration registers for this machine."""
+        return self._own_app_id()
+
+    @property
+    def uses_device_cloud_app_id(self) -> bool:
+        """True when the session id is the machine's own signature, not the fallback."""
+        return self._device_app_id is not None
+
+    def _own_app_id(self) -> int:
+        """Our session id: the machine's signature when known, else the constant."""
+        if self._device_app_id is not None:
+            return self._device_app_id
+        return self._default_app_id
+
+    def _refresh_device_app_id(self) -> None:
+        """Re-derive the machine's cloud id from the learned frames.
+
+        An ECAM only executes commands from a session registered with its own
+        4-byte device signature; a session opened with the generic constant is
+        accepted by Ayla, confirmed on ``app_id``, and then silently ignored by
+        the machine (issue #15). Every frame the official app sends carries that
+        signature, so any learned frame - including one restored from disk at
+        startup - yields it. Called after loading and after each new capture.
+        """
+        new_id = app_id_from_signature(self._learned_device_signature())
+        if new_id == self._device_app_id:
+            return
+        previous_own = self._own_app_id()
+        self._device_app_id = new_id
+        own = self._own_app_id()
+        if own == previous_own:
+            return
+        _LOGGER.info(
+            "Cloud session id for dsn=%s is now %s (%d / 0x%08x)",
+            self.device.dsn,
+            "the machine's own signature" if new_id is not None else "the default constant",
+            own,
+            own & 0xFFFFFFFF,
+        )
+        # Only rebind when we were using our own id: an adopted foreign session
+        # must keep riding the app's id until it is released.
+        if self._integration_app_id == previous_own:
+            self._integration_app_id = own
+            self._last_connect_at = 0
+            self._session_confirmed = False
+
     def _parse_app_id_value(self, raw: Any) -> int | None:
         if raw is None:
             return None
@@ -268,8 +323,15 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None, False
         return self._parse_app_id_value(prop.get("value")), True
 
-    async def _wait_for_session_confirmed(self) -> bool:
-        """Poll app_id until it matches our integration id (DlghIoT connect loop)."""
+    async def _wait_for_session_confirmed(self, want_app_id: int | None = None) -> bool:
+        """Poll app_id until it matches the id we registered (DlghIoT connect loop).
+
+        ``want_app_id`` is the id actually POSTed; it is passed explicitly so a
+        concurrent re-derivation of the machine's own id (a frame learned by the
+        poll while this connect is in flight) cannot make the loop wait for an id
+        that was never registered.
+        """
+        want = self._integration_app_id if want_app_id is None else want_app_id
         started = time.time()
         last_progress = started
         poll_count = 0
@@ -278,16 +340,16 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "Waiting for cloud session confirm on dsn=%s (timeout=%ds, want app_id=%d)",
             self.device.dsn,
             CONNECT_CONFIRM_TIMEOUT,
-            self._integration_app_id,
+            want,
         )
         while time.time() - started < CONNECT_CONFIRM_TIMEOUT:
             poll_count += 1
             app_id, fetch_ok = await self._fetch_app_id_live()
             if not fetch_ok:
                 cloud_errors += 1
-            elif app_id == self._integration_app_id:
+            elif app_id == want:
                 elapsed = time.time() - started
-                self._session_confirmed = True
+                self._session_confirmed = want == self._integration_app_id
                 _LOGGER.info(
                     "Cloud session confirmed app_id=%d (0x%08x) on dsn=%s after %.1fs "
                     "(polls=%d, cloud_errors=%d)",
@@ -309,7 +371,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     now - started,
                     CONNECT_CONFIRM_TIMEOUT,
                     app_id if fetch_ok else "fetch_failed",
-                    self._integration_app_id,
+                    want,
                     poll_count,
                     cloud_errors,
                 )
@@ -321,7 +383,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             CONNECT_CONFIRM_TIMEOUT,
             self.device.dsn,
             last_app_id if last_ok else "fetch_failed",
-            self._integration_app_id,
+            want,
             poll_count,
             cloud_errors,
         )
@@ -335,7 +397,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.profile.uses_cloud_session and app_id != self._last_seen_app_id:
                 if app_id in (None, 0):
                     holder = "free"
-                elif app_id == self._default_app_id:
+                elif app_id == self._own_app_id():
                     holder = "ha"
                 else:
                     holder = "foreign"
@@ -354,24 +416,24 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # An adopted foreign session (official app's id) is transient: once
             # the machine reports no session holder, revert to our own id so we
             # never keep a foreign session alive on the app's behalf.
-            if app_id == 0 and self._integration_app_id != self._default_app_id:
+            if app_id == 0 and self._integration_app_id != self._own_app_id():
                 _LOGGER.info(
                     "Foreign cloud session released on dsn=%s; reverting to own app_id",
                     self.device.dsn,
                 )
-                self._integration_app_id = self._default_app_id
+                self._integration_app_id = self._own_app_id()
                 self._last_connect_at = 0
         except Exception:  # noqa: BLE001 - diagnostic must not break polling
             _LOGGER.debug("Session parse failed (non-fatal)", exc_info=True)
 
     def _revert_foreign_app_id_if_session_clear(self, app_id: int | None) -> None:
         """Before a cold POST, use our own cloud id when no session is held."""
-        if app_id in (None, 0) and self._integration_app_id != self._default_app_id:
+        if app_id in (None, 0) and self._integration_app_id != self._own_app_id():
             _LOGGER.info(
                 "No cloud session holder on dsn=%s; reverting to own app_id before connect",
                 self.device.dsn,
             )
-            self._integration_app_id = self._default_app_id
+            self._integration_app_id = self._own_app_id()
             self._last_connect_at = 0
 
     async def _send_property_command(self, value: str, label: str) -> None:
@@ -419,14 +481,17 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return True
         return False
 
-    async def _post_cloud_session(self) -> None:
+    async def _post_cloud_session(self) -> int | None:
+        """Register the cloud session; returns the app id actually POSTed."""
         if not self.connected_property:
-            return
+            return None
+        app_id = self._integration_app_id
         await self.client.async_post_cloud_session(
             self.device.dsn,
             self.connected_property,
-            self._integration_app_id,
+            app_id,
         )
+        return app_id
 
     async def _cold_connect_then(
         self, send_fn: Callable[[], Awaitable[None]]
@@ -444,9 +509,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self.device.dsn,
                         app_id,
                     )
-                    await self._post_cloud_session()
+                    posted_app_id = await self._post_cloud_session()
                     await asyncio.sleep(CONNECT_SETTLE_DELAY)
-                    if not await self._wait_for_session_confirmed():
+                    if not await self._wait_for_session_confirmed(posted_app_id):
                         return
                     self._last_connect_at = time.time()
                 elif not self._session_confirmed:
@@ -645,6 +710,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.learned_wake_frame,
                 )
                 self.learned_wake_frame = None
+        # A restored frame carries the device signature, so the machine's own
+        # cloud id is known again before any new capture - a clean restart with
+        # the official app closed commands the machine straight away (issue #15).
+        self._refresh_device_app_id()
         total = (
             len(self.learned_start_frames)
             + len(self.learned_stop_frames)
@@ -717,16 +786,18 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._store.async_delay_save(
                     self._learned_storage_data, RECIPE_STORE_SAVE_DELAY
                 )
+                self._refresh_device_app_id()
             return
 
-        if ftype != "beverage" or decoded.get("style") != "eletta":
-            return
-        bev_hex = decoded.get("beverage_id")
-        if not bev_hex:
-            return
-        try:
-            bev_id = int(bev_hex, 16)
-        except (ValueError, TypeError):
+        bev_id = learnable_beverage_id(decoded)
+        if bev_id is None:
+            if ftype == "beverage":
+                _LOGGER.debug(
+                    "Not learning captured beverage frame (id=%s, crc_valid=%s): "
+                    "unknown beverage or invalid checksum",
+                    decoded.get("beverage_id"),
+                    decoded.get("crc_valid"),
+                )
             return
         table = (
             self.learned_stop_frames
@@ -746,6 +817,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._store.async_delay_save(
                 self._learned_storage_data, RECIPE_STORE_SAVE_DELAY
             )
+            self._refresh_device_app_id()
 
     async def async_send_beverage(self, beverage_id: int, action: int) -> None:
         """Build + send a beverage command via the resolved command property."""
@@ -825,17 +897,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _learned_device_signature(self) -> bytes | None:
         """The 4-byte per-device signature carried by learned app frames (the
         wake frame first, else any learned beverage frame)."""
-        from .command_builder import device_signature_from_frame
-
-        for frame in (
-            self.learned_wake_frame,
-            *self.learned_start_frames.values(),
-            *self.learned_stop_frames.values(),
-        ):
-            sig = device_signature_from_frame(frame)
-            if sig is not None:
-                return sig
-        return None
+        return first_device_signature(
+            (
+                self.learned_wake_frame,
+                *self.learned_start_frames.values(),
+                *self.learned_stop_frames.values(),
+            )
+        )
 
     async def async_send_standby(self) -> None:
         """Send the STANDBY / power-off command (84 0f, params 01 01).

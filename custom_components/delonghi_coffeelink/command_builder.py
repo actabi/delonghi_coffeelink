@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import time
+from collections.abc import Iterable
 
 from .const import (
     BEVERAGES,
@@ -22,7 +23,9 @@ from .const import (
 )
 
 _BEV_NAMES = {bev_id: display for bev_id, _key, display, _icon in BEVERAGES}
-_ACTION_NAMES = {0x01: "start", 0x02: "stop"}
+# Soul frames start with 0x01; Eletta (learn-and-replay) app frames use 0x03 for
+# start - both mean "start", 0x02 means "stop" on either dialect.
+_ACTION_NAMES = {0x01: "start", 0x02: "stop", 0x03: "start"}
 
 
 def _session_id_to_tail_bytes(app_id: int) -> bytes:
@@ -319,6 +322,66 @@ def device_signature_from_frame(frame_b64: str | None) -> bytes | None:
     return sig if len(sig) == 4 else None
 
 
+def first_device_signature(frames: Iterable[str | None]) -> bytes | None:
+    """First usable device signature among learned frames, ``None`` if none has one.
+
+    All frames of one machine carry the same signature, so the order only decides
+    which frame is consulted first. An all-zero signature is skipped: zero is the
+    "no session holder" marker on the wire and can never identify a machine.
+    """
+    for frame in frames:
+        sig = device_signature_from_frame(frame)
+        if sig is not None and any(sig):
+            return sig
+    return None
+
+
+def app_id_from_signature(signature: bytes | None) -> int | None:
+    """The cloud-session app id a machine honours, from its device signature.
+
+    ECAM machines (Eletta Explore and relatives) only execute commands coming
+    from a cloud session registered with *their own* 4-byte signature - the one
+    they append to every frame they exchange with the official app. Ayla happily
+    stores any other value in ``app_id`` and the machine then silently ignores
+    every command (issue #15).
+
+    The id is the signature read as a signed big-endian int32, i.e. the exact
+    inverse of :func:`_session_id_to_tail_bytes`. Returns ``None`` for a missing,
+    malformed or all-zero signature (0 means "no session holder" on the wire, so
+    it can never be a valid id).
+    """
+    if not signature or len(signature) != 4 or not any(signature):
+        return None
+    return int.from_bytes(signature, "big", signed=True)
+
+
+def learnable_beverage_id(decoded: dict) -> int | None:
+    """Beverage id to learn from a captured app frame, or ``None`` to skip it.
+
+    A frame is worth learning when it is a beverage command whose CRC checks out
+    and whose beverage id is one this integration exposes - nothing else. The
+    frame *dialect* is deliberately NOT part of the decision: on a
+    ``learns_from_app`` model every command the app sends is by definition the
+    dialect that machine speaks, and the previous `style == "eletta"` gate
+    silently dropped every beverage whose recipe happened not to end with the
+    `0x01 0x0a` bytes (issue #15: Coffee could never be learned).
+    """
+    if decoded.get("type") != "beverage" or decoded.get("crc_valid") is not True:
+        return None
+    # Never learn bytes this integration could have produced itself: on the
+    # learn-and-replay path that would be our own best-effort fallback echoed
+    # back (or something indistinguishable from it), and storing it would
+    # replace the "teach me from the app" prompt with a frame the machine
+    # ignores forever. Replaying it would send those exact bytes anyway.
+    if decoded.get("matches_integration") is True:
+        return None
+    try:
+        bev_id = int(decoded.get("beverage_id", ""), 16)
+    except (ValueError, TypeError):
+        return None
+    return bev_id if bev_id in _BEV_NAMES else None
+
+
 def is_wake_power_frame(decoded: dict) -> bool:
     """True if a decoded frame is a real wake/power-on command (params 02 01).
 
@@ -387,11 +450,19 @@ def decode_command(value_b64: str) -> dict:
         out["crc_valid"] = (
             crc16_aug_ccitt(raw[0 : frame_len - 2]) == int.from_bytes(crc_bytes, "big")
         )
-        # Eletta (DL-striker-cb) terminates the recipe block with 0x01 0x0a before
-        # the CRC; the Soul (DL-millcore) frame has no trailer (6 fixed bytes).
-        eletta = raw[frame_len - 4 : frame_len - 2] == ELETTA_RECIPE_TRAILER
-        out["style"] = "eletta" if eletta else "soul"
-        recipe = raw[6 : (frame_len - 4 if eletta else frame_len - 2)]
+        # Soul (DL-millcore) frames are a fixed 14-byte shape (length byte 0x0d,
+        # 6 recipe bytes); every learn-and-replay model sends a variable-length
+        # recipe block instead. The `0x01 0x0a` trailer is NOT a reliable marker:
+        # it is recipe data and varies per beverage (issue #15 - Coffee 0x02 ends
+        # with `01 06`), so the frame shape decides the dialect and the trailer
+        # only decides where the recipe block stops.
+        soul_shape = frame_len == 14  # i.e. length byte 0x0d == CMD_LENGTH
+        out["style"] = "soul" if soul_shape else "eletta"
+        has_trailer = (
+            not soul_shape
+            and raw[frame_len - 4 : frame_len - 2] == ELETTA_RECIPE_TRAILER
+        )
+        recipe = raw[6 : (frame_len - 4 if has_trailer else frame_len - 2)]
         out["recipe"] = recipe.hex(" ")
         # Back-compat: the historical "params" key keeps the first 6 recipe bytes.
         out["params"] = recipe[:6].hex(" ")

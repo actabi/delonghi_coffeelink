@@ -242,12 +242,20 @@ def _parse_cloud_session_app_id(raw: Any) -> int | None:
         return None
 
 
-def _cloud_session_holder(app_id: int | None) -> str:
+def _cloud_session_holder(app_id: int | None, own_app_id: int | None = None) -> str:
+    """Who holds the machine's cloud session slot.
+
+    ``own_app_id`` is the id THIS coordinator registers for the machine. On ECAM
+    models that is the machine's own device signature (issue #15), which the
+    official app uses too - so "ha" there means "a session with this machine's
+    id is open", not "opened by Home Assistant". Falls back to the generic
+    constant when the coordinator id is unavailable.
+    """
     if app_id is None:
         return "unknown"
     if app_id == 0:
         return "free"
-    if app_id == _HA_CLOUD_SESSION_APP_ID:
+    if app_id == (_HA_CLOUD_SESSION_APP_ID if own_app_id is None else own_app_id):
         return "ha"
     return "foreign"
 
@@ -276,7 +284,16 @@ class DelonghiCloudSessionAppIdSensor(_Base):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         app_id = self.native_value
-        attrs: dict[str, Any] = {"holder": _cloud_session_holder(app_id)}
+        attrs: dict[str, Any] = {
+            "holder": _cloud_session_holder(
+                app_id, self.coordinator.own_cloud_app_id
+            ),
+            "session_id_source": (
+                "device_signature"
+                if self.coordinator.uses_device_cloud_app_id
+                else "default_constant"
+            ),
+        }
         if app_id is not None:
             attrs["app_id_hex"] = f"{app_id & 0xFFFFFFFF:08x}"
         return attrs

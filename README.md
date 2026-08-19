@@ -50,6 +50,15 @@ learned (e.g. the wake frame) - so once the Wake teach step above is done, the
 
 > If you change a drink's settings in the app (e.g. quantity), start it once more from the app so Home Assistant re-learns the new bytes.
 
+> **Why the teach step also unlocks the cloud session.** ECAM machines only obey
+> commands sent inside a cloud session registered with *their own* 4-byte device
+> signature - the one they append to every frame. That signature is read from the
+> first frame you teach, so before any teach step the machine may accept a command
+> (HTTP 200, valid CRC, `machine_status: ready`) and simply do nothing. The
+> `Cloud Session app_id` diagnostic sensor shows which id is in use through its
+> `session_id_source` attribute (`device_signature` once taught, `default_constant`
+> before). See [issue #15](https://github.com/actabi/delonghi_coffeelink/issues/15).
+
 A read-only **Dump Recipe Datapoints** diagnostic button is also provided; it logs the recipe definitions the machine stores (it sends nothing to the machine). See [issue #1](https://github.com/actabi/delonghi_coffeelink/issues/1) for the reverse-engineering details.
 
 ## IMPORTANT - Coffee Link mobile app must be closed
