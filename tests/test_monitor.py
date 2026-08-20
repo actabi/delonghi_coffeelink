@@ -45,6 +45,9 @@ monitor = _load("monitor", "monitor.py")
 parse_monitor_b64 = monitor.parse_monitor_b64
 crc16_aug_ccitt = cb.crc16_aug_ccitt
 MONITOR_REQUEST_ID = monitor.MONITOR_REQUEST_ID
+normalize_connection_status = sys.modules[
+    "delonghi_coffeelink.const"
+].normalize_connection_status
 
 
 def _build_monitor_blob(contents: bytes) -> str:
@@ -143,3 +146,17 @@ def test_malformed_blob_returns_error_not_raise():
     assert "error" in parse_monitor_b64("")
     # Valid base64 but not a MonitorV2 packet.
     assert "error" in parse_monitor_b64(base64.b64encode(b"\x0d\x05\x99\x00").decode())
+
+
+def test_unknown_machine_status_uses_stable_enum_key():
+    contents = bytearray(8)
+    contents[5] = 0xFE
+    result = parse_monitor_b64(_build_monitor_blob(bytes(contents)))
+    assert result["status_name"] == "unknown"
+
+
+def test_connection_status_is_normalized_to_enum_keys():
+    assert normalize_connection_status("Online") == "online"
+    assert normalize_connection_status(" offline ") == "offline"
+    assert normalize_connection_status("unexpected") == "unknown"
+    assert normalize_connection_status(None) == "unknown"

@@ -51,6 +51,14 @@ def parse_counter_value(val: Any) -> int | None:
         return None
 
 
+def parse_water_volume_liters(val: Any) -> float | None:
+    """Convert a De'Longhi water-volume counter from millilitres to litres."""
+    milliliters = parse_counter_value(val)
+    if milliliters is None:
+        return None
+    return round(milliliters / 1000, 3)
+
+
 def counter_breakdown(val: Any) -> dict | None:
     """Return the per-recipe JSON breakdown of a counter value, else ``None``.
 

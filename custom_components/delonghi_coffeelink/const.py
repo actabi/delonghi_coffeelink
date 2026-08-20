@@ -100,6 +100,14 @@ MACHINE_STATUS = {
     17: "preparing_milk_alt",
     29: "unknown",
 }
+MACHINE_STATUS_OPTIONS = tuple(dict.fromkeys(MACHINE_STATUS.values()))
+CONNECTION_STATUS_OPTIONS = ("online", "offline", "unknown")
+
+
+def normalize_connection_status(value: object) -> str:
+    """Return a stable Home Assistant enum key for an Ayla connection value."""
+    normalized = str(value).strip().lower() if value is not None else ""
+    return normalized if normalized in CONNECTION_STATUS_OPTIONS else "unknown"
 
 # Default recipe params (from captured hot water command)
 # Bytes: temp_flag, reserved, quantity_low, quantity_high?, recipe_type, ???

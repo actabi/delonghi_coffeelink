@@ -28,6 +28,7 @@ def _load(modname: str, filename: str):
 
 counters = _load("counters", "counters.py")
 parse_counter_value = counters.parse_counter_value
+parse_water_volume_liters = counters.parse_water_volume_liters
 counter_breakdown = counters.counter_breakdown
 
 
@@ -66,6 +67,23 @@ def test_parse_counter_value_bool_is_not_int():
     # bool is a subtype of int in Python; ensure we never treat it as a count.
     assert parse_counter_value(True) is None
     assert parse_counter_value(False) is None
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (387213, 387.213),
+        ("387213", 387.213),
+        (0, 0.0),
+        (1, 0.001),
+        (None, None),
+        (True, None),
+        ("not-a-number", None),
+        ('{"part_a": 1000, "part_b": 250}', 1.25),
+    ],
+)
+def test_parse_water_volume_liters(value, expected):
+    assert parse_water_volume_liters(value) == expected
 
 
 # --- counter_breakdown ---------------------------------------------------- #

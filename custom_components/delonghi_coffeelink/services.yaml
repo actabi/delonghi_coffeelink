@@ -1,14 +1,11 @@
 start_beverage:
-  name: Start Beverage
-  description: Start brewing a specific beverage on the connected DeLonghi machine.
   fields:
     beverage:
-      name: Beverage
-      description: Beverage key (espresso, cappuccino, hot_water, tea, etc.)
       required: true
       example: hot_water
       selector:
         select:
+          translation_key: beverage
           options:
             - espresso
             - coffee
@@ -33,16 +30,13 @@ start_beverage:
             - brew_over_ice
 
 stop_beverage:
-  name: Stop Beverage
-  description: Send a stop command for the given beverage.
   fields:
     beverage:
-      name: Beverage
-      description: Beverage key
       required: true
       example: hot_water
       selector:
         select:
+          translation_key: beverage
           options:
             - espresso
             - coffee
@@ -52,12 +46,8 @@ stop_beverage:
             - americano
 
 send_raw_command:
-  name: Send Raw Command
-  description: Send a raw base64-encoded binary command to data_request (advanced).
   fields:
     value_base64:
-      name: Command (base64)
-      description: Base64 encoding of the binary command bytes.
       required: true
       example: DQ2D8BABDwD6GwEGgSRp6Myg
       selector:
