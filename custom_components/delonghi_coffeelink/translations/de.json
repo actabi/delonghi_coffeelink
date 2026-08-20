@@ -1,0 +1,238 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DeLonghi Coffee Link",
+        "description": "Gib die Zugangsdaten deines Coffee-Link-Kontos ein. Es sind dieselben, die du in der mobilen Coffee-Link-App verwendest.",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ungültige E-Mail-Adresse oder ungültiges Passwort.",
+      "cannot_connect": "Verbindung zur DeLonghi-Cloud fehlgeschlagen.",
+      "no_devices": "In diesem Konto wurden keine DeLonghi-Geräte gefunden.",
+      "unknown": "Unerwarteter Fehler."
+    },
+    "abort": {
+      "already_configured": "Dieses Konto ist bereits konfiguriert."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_beverages": {
+        "name": "Getränke gesamt"
+      },
+      "total_espresso": {
+        "name": "Espresso gesamt"
+      },
+      "total_milk_drinks": {
+        "name": "Milchgetränke gesamt"
+      },
+      "total_water": {
+        "name": "Wasserbezüge gesamt"
+      },
+      "total_espresso_alt": {
+        "name": "Espresso (alternativ) gesamt"
+      },
+      "total_coffee": {
+        "name": "Kaffee gesamt"
+      },
+      "total_long_coffee": {
+        "name": "Long Coffee gesamt"
+      },
+      "total_doppio": {
+        "name": "Doppio+ gesamt"
+      },
+      "total_americano": {
+        "name": "Americano gesamt"
+      },
+      "total_cappuccino": {
+        "name": "Cappuccino gesamt"
+      },
+      "total_latte_macchiato": {
+        "name": "Latte Macchiato gesamt"
+      },
+      "total_caffelatte": {
+        "name": "Caffè Latte gesamt"
+      },
+      "total_flat_white": {
+        "name": "Flat White gesamt"
+      },
+      "total_espresso_macchiato": {
+        "name": "Espresso Macchiato gesamt"
+      },
+      "total_hot_milk": {
+        "name": "Heiße Milch gesamt"
+      },
+      "total_cappuccino_doppio": {
+        "name": "Cappuccino Doppio+ gesamt"
+      },
+      "total_cappuccino_reverse": {
+        "name": "Cappuccino Reverse gesamt"
+      },
+      "total_hot_water": {
+        "name": "Heißwasser gesamt"
+      },
+      "total_tea": {
+        "name": "Tee gesamt"
+      },
+      "total_coffee_pot": {
+        "name": "Kaffeekannen gesamt"
+      },
+      "total_brew_over_ice": {
+        "name": "Brew Over Ice gesamt"
+      },
+      "total_mug_hot": {
+        "name": "Heiße Bechergetränke gesamt"
+      },
+      "total_mug_cold": {
+        "name": "Kalte Bechergetränke gesamt"
+      },
+      "total_iced_bev": {
+        "name": "Eisgetränke gesamt"
+      },
+      "total_mug_bev": {
+        "name": "Bechergetränke gesamt"
+      },
+      "total_mug_iced_bev": {
+        "name": "Eis-Bechergetränke gesamt"
+      },
+      "total_cold_brew_bev": {
+        "name": "Cold-Brew-Getränke gesamt"
+      },
+      "grounds_counter": {
+        "name": "Tresterzähler"
+      },
+      "total_descales": {
+        "name": "Entkalkungen gesamt"
+      },
+      "water_total_quantity": {
+        "name": "Wassermenge gesamt"
+      },
+      "total_filters_used": {
+        "name": "Verbrauchte Filter gesamt"
+      },
+      "water_filter_quantity": {
+        "name": "Gefilterte Wassermenge"
+      },
+      "descale_status": {
+        "name": "Entkalkungsstatus"
+      },
+      "water_hardness": {
+        "name": "Wasserhärte"
+      },
+      "software_version": {
+        "name": "Softwareversion"
+      },
+      "last_connected": {
+        "name": "Zuletzt verbunden"
+      },
+      "connection_status": {
+        "name": "Verbindungsstatus"
+      },
+      "machine_status": {
+        "name": "Maschinenstatus"
+      },
+      "cloud_session_app_id": {
+        "name": "App-ID der Cloud-Sitzung"
+      },
+      "last_captured_command": {
+        "name": "Zuletzt mitgeschnittener Befehl"
+      }
+    },
+    "button": {
+      "start_espresso": {
+        "name": "Espresso"
+      },
+      "start_coffee": {
+        "name": "Kaffee"
+      },
+      "start_long_coffee": {
+        "name": "Long Coffee"
+      },
+      "start_double_espresso": {
+        "name": "Doppelter Espresso"
+      },
+      "start_doppio": {
+        "name": "Doppio+"
+      },
+      "start_americano": {
+        "name": "Americano"
+      },
+      "start_cappuccino": {
+        "name": "Cappuccino"
+      },
+      "start_latte_macchiato": {
+        "name": "Latte Macchiato"
+      },
+      "start_caffelatte": {
+        "name": "Caffè Latte"
+      },
+      "start_flat_white": {
+        "name": "Flat White"
+      },
+      "start_espresso_macchiato": {
+        "name": "Espresso Macchiato"
+      },
+      "start_hot_milk": {
+        "name": "Heiße Milch"
+      },
+      "start_cappuccino_doppio": {
+        "name": "Cappuccino Doppio+"
+      },
+      "start_cappuccino_reverse": {
+        "name": "Cappuccino Reverse"
+      },
+      "start_hot_water": {
+        "name": "Heißwasser"
+      },
+      "start_tea": {
+        "name": "Tee"
+      },
+      "start_coffee_pot": {
+        "name": "Kaffeekanne"
+      },
+      "start_cortado": {
+        "name": "Cortado"
+      },
+      "start_long_black": {
+        "name": "Long Black"
+      },
+      "start_mug_to_go": {
+        "name": "Reisebecher"
+      },
+      "start_brew_over_ice": {
+        "name": "Brew Over Ice"
+      },
+      "wake": {
+        "name": "Einschalten"
+      },
+      "standby": {
+        "name": "Standby"
+      },
+      "stop": {
+        "name": "Stopp"
+      },
+      "dump_recipes": {
+        "name": "Rezept-Datenpunkte protokollieren"
+      }
+    },
+    "binary_sensor": {
+      "water_tank_empty": {
+        "name": "Wassertank leer"
+      },
+      "waste_container_full": {
+        "name": "Tresterbehälter voll"
+      },
+      "decalcification_needed": {
+        "name": "Entkalkung erforderlich"
+      },
+      "filter_change_needed": {
+        "name": "Filterwechsel erforderlich"
+      }
+    }
+  }
+}
