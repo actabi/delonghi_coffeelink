@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.18] - 2026-08-20
+
+### Added
+- **Complete Czech localization** (`#19`, `#22`, thanks `@kasiom`): config flow,
+  actions, entity names and every enum state. `Connection Status` and
+  `Machine Status` are now proper `SensorDeviceClass.ENUM` sensors with declared
+  options, and action names/descriptions moved from `services.yaml` to
+  `strings.json` where modern Home Assistant expects them, with a translated
+  beverage selector.
+- **German translation** (`#25`, thanks `@MarcFu`): translation-only, complete
+  config flow and entity tree.
+- **French, Russian and German translations completed** to full parity with
+  `strings.json` (they were 78 of 128 keys: no enum states, no action metadata,
+  no beverage selector - those would have fallen back to English). The French
+  tree is also accented now; it had been ASCII-only.
+- **CI runs the test suite** (`#21`, `#23`, thanks `@kasiom`): pytest with
+  coverage on Python 3.12 and 3.13, Ruff lint and import order, every GitHub
+  Action pinned to a SHA, job timeouts, least-privilege `permissions`, and
+  Dependabot for actions and pip.
+
+### Changed
+- **BREAKING for statistics** - `Water Total Quantity` and `Water Filter
+  Quantity` now report **litres** instead of a unitless count. De'Longhi
+  machines publish these counters in millilitres (independently confirmed by
+  De'Longhi's own statistics sheet, by `sk7n4k3d/delonghi-ha` which applies
+  `scale=0.001` to the same datapoints, and by `PyDeLonghiAPI` which derives
+  lifetime litres as `d553 / 1000`), and Home Assistant's water device class
+  works in litres. Existing installations have long-term statistics recorded
+  without a unit, so Home Assistant will raise a "units changed" repair for
+  these two entities; accepting it keeps history consistent with the new unit.
+  Values drop by a factor of 1000 in graphs - `387213` now reads `387.213 L`.
+  Both keep `TOTAL_INCREASING`: they are lifetime meters, and a filter change
+  resetting `d555` is exactly what that state class absorbs.
+- The conversion is declared in `COUNTER_MEASUREMENTS` (const.py) next to
+  `COUNTER_SENSORS`, not branched on entity keys inside the sensor platform, so
+  a machine that publishes the same measurement under another datapoint is
+  supported by extending that row - no entity code involved.
+- The translation parity test now covers **every** language file found in
+  `translations/`, discovered dynamically, and derives the expected machine
+  statuses and beverage options from `const.py`. A new language, machine status
+  or beverage now fails the suite until it is translated; previously only `en`
+  and `cs` were checked, which is how `fr`/`ru`/`de` had drifted 50 keys behind.
+
 ## [0.3.17] - 2026-08-19
 
 ### Fixed

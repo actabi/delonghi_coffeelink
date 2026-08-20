@@ -131,10 +131,31 @@
         "name": "Zuletzt verbunden"
       },
       "connection_status": {
-        "name": "Verbindungsstatus"
+        "name": "Verbindungsstatus",
+        "state": {
+          "online": "Verbunden",
+          "offline": "Getrennt",
+          "unknown": "Unbekannt"
+        }
       },
       "machine_status": {
-        "name": "Maschinenstatus"
+        "name": "Maschinenstatus",
+        "state": {
+          "standby": "Standby",
+          "waking_up": "Wird eingeschaltet",
+          "going_to_sleep": "Wechselt in den Standby",
+          "descaling": "Entkalkung",
+          "preparing_steam": "Dampf wird erzeugt",
+          "recovering": "Aufheizen",
+          "ready": "Bereit",
+          "rinsing": "Spülung",
+          "preparing_milk": "Milchzubereitung",
+          "dispensing_hot_water": "Heißwasserausgabe",
+          "cleaning_milk": "Milchsystem-Reinigung",
+          "preparing_chocolate": "Schokoladenzubereitung",
+          "preparing_milk_alt": "Milchzubereitung",
+          "unknown": "Unbekannt"
+        }
       },
       "cloud_session_app_id": {
         "name": "App-ID der Cloud-Sitzung"
@@ -232,6 +253,65 @@
       },
       "filter_change_needed": {
         "name": "Filterwechsel erforderlich"
+      }
+    }
+  },
+  "services": {
+    "start_beverage": {
+      "name": "Getränk starten",
+      "description": "Startet die Zubereitung eines Getränks auf der ausgewählten De'Longhi Kaffeemaschine.",
+      "fields": {
+        "beverage": {
+          "name": "Getränk",
+          "description": "Zuzubereitendes Getränkerezept."
+        }
+      }
+    },
+    "stop_beverage": {
+      "name": "Getränk stoppen",
+      "description": "Stoppt die Zubereitung des ausgewählten Getränks.",
+      "fields": {
+        "beverage": {
+          "name": "Getränk",
+          "description": "Getränk, dessen Zubereitung gestoppt werden soll."
+        }
+      }
+    },
+    "send_raw_command": {
+      "name": "Rohbefehl senden",
+      "description": "Sendet einen base64-codierten Binärbefehl an die Kaffeemaschine (für fortgeschrittene Nutzer).",
+      "fields": {
+        "value_base64": {
+          "name": "Befehl (base64)",
+          "description": "Base64-Darstellung der Befehlsbytes."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "espresso": "Espresso",
+        "coffee": "Kaffee",
+        "long_coffee": "Long Coffee",
+        "double_espresso": "Doppelter Espresso",
+        "doppio": "Doppio+",
+        "americano": "Americano",
+        "cappuccino": "Cappuccino",
+        "latte_macchiato": "Latte Macchiato",
+        "caffelatte": "Caffè Latte",
+        "flat_white": "Flat White",
+        "espresso_macchiato": "Espresso Macchiato",
+        "hot_milk": "Heiße Milch",
+        "cappuccino_doppio": "Cappuccino Doppio+",
+        "cappuccino_reverse": "Cappuccino Reverse",
+        "hot_water": "Heißwasser",
+        "tea": "Tee",
+        "coffee_pot": "Kaffeekanne",
+        "cortado": "Cortado",
+        "long_black": "Long Black",
+        "mug_to_go": "Reisebecher",
+        "brew_over_ice": "Brew Over Ice"
       }
     }
   }

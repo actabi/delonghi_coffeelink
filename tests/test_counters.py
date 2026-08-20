@@ -101,3 +101,23 @@ def test_counter_breakdown_returns_json_object():
 )
 def test_counter_breakdown_none_for_non_objects(value):
     assert counter_breakdown(value) is None
+
+
+# --- declarative measurement table ---------------------------------------- #
+
+def test_measured_counters_reference_real_counter_keys():
+    """A typo in COUNTER_MEASUREMENTS would silently drop the conversion."""
+    const = _load("const", "const.py")
+
+    keys = {key for _candidates, key, _friendly, _icon in const.COUNTER_SENSORS}
+    assert set(const.COUNTER_MEASUREMENTS) <= keys
+
+
+def test_water_counters_are_declared_as_litres():
+    """The mL -> L conversion is data, not a branch inside the entity."""
+    const = _load("const", "const.py")
+
+    assert const.COUNTER_MEASUREMENTS == {
+        "water_total_quantity": const.MEASUREMENT_WATER_LITERS,
+        "water_filter_quantity": const.MEASUREMENT_WATER_LITERS,
+    }

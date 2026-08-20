@@ -131,10 +131,31 @@
         "name": "Последнее подключение"
       },
       "connection_status": {
-        "name": "Статус подключения"
+        "name": "Статус подключения",
+        "state": {
+          "online": "Подключено",
+          "offline": "Отключено",
+          "unknown": "Неизвестно"
+        }
       },
       "machine_status": {
-        "name": "Статус кофемашины"
+        "name": "Статус кофемашины",
+        "state": {
+          "standby": "Ожидание",
+          "waking_up": "Включение",
+          "going_to_sleep": "Переход в ожидание",
+          "descaling": "Удаление накипи",
+          "preparing_steam": "Подготовка пара",
+          "recovering": "Нагрев",
+          "ready": "Готова",
+          "rinsing": "Промывка",
+          "preparing_milk": "Приготовление молока",
+          "dispensing_hot_water": "Подача горячей воды",
+          "cleaning_milk": "Очистка молочной системы",
+          "preparing_chocolate": "Приготовление шоколада",
+          "preparing_milk_alt": "Приготовление молока",
+          "unknown": "Неизвестно"
+        }
       },
       "cloud_session_app_id": {
         "name": "app_id облачной сессии"
@@ -232,6 +253,65 @@
       },
       "filter_change_needed": {
         "name": "Требуется замена фильтра"
+      }
+    }
+  },
+  "services": {
+    "start_beverage": {
+      "name": "Приготовить напиток",
+      "description": "Запускает приготовление напитка на выбранной кофемашине De'Longhi.",
+      "fields": {
+        "beverage": {
+          "name": "Напиток",
+          "description": "Рецепт напитка для приготовления."
+        }
+      }
+    },
+    "stop_beverage": {
+      "name": "Остановить напиток",
+      "description": "Останавливает приготовление выбранного напитка.",
+      "fields": {
+        "beverage": {
+          "name": "Напиток",
+          "description": "Напиток, приготовление которого нужно остановить."
+        }
+      }
+    },
+    "send_raw_command": {
+      "name": "Отправить сырую команду",
+      "description": "Отправляет двоичную команду в кодировке base64 на кофемашину (для опытных пользователей).",
+      "fields": {
+        "value_base64": {
+          "name": "Команда (base64)",
+          "description": "Представление байтов команды в base64."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "espresso": "Эспрессо",
+        "coffee": "Кофе",
+        "long_coffee": "Лонг",
+        "double_espresso": "Двойной эспрессо",
+        "doppio": "Доппио+",
+        "americano": "Американо",
+        "cappuccino": "Капучино",
+        "latte_macchiato": "Латте макиато",
+        "caffelatte": "Латте",
+        "flat_white": "Флэт уайт",
+        "espresso_macchiato": "Эспрессо макиато",
+        "hot_milk": "Горячее молоко",
+        "cappuccino_doppio": "Доппио капучино+",
+        "cappuccino_reverse": "Капучино микс",
+        "hot_water": "Горячая вода",
+        "tea": "Чай",
+        "coffee_pot": "Кофейник",
+        "cortado": "Кортадо",
+        "long_black": "Лонг блэк",
+        "mug_to_go": "Кружка с собой",
+        "brew_over_ice": "Кофе со льдом"
       }
     }
   }

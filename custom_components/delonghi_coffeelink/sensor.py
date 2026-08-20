@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -22,12 +24,14 @@ from .counters import counter_breakdown, parse_counter_value, parse_water_volume
 from .const import (
     APP_ID_PROPERTY,
     CONNECTION_STATUS_OPTIONS,
+    COUNTER_MEASUREMENTS,
     COUNTER_SENSORS,
     DOMAIN,
     INFO_SENSORS,
     INTEGRATION_CLOUD_APP_ID,
     MANUFACTURER,
     MACHINE_STATUS_OPTIONS,
+    MEASUREMENT_WATER_LITERS,
     normalize_connection_status,
 )
 from .coordinator import DelonghiCoordinator
@@ -35,6 +39,31 @@ from .coordinator import DelonghiCoordinator
 _HA_CLOUD_SESSION_APP_ID = normalize_signed_app_id(INTEGRATION_CLOUD_APP_ID)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _Measurement:
+    """How a counter that carries a physical quantity is published.
+
+    One entry per token of ``COUNTER_MEASUREMENTS``; the counter entity itself
+    knows nothing about which key is a volume, so adding a measured counter is a
+    const.py change only.
+    """
+
+    parse: Callable[[Any], int | float | None]
+    device_class: SensorDeviceClass
+    unit: str
+    precision: int
+
+
+_MEASUREMENTS: dict[str, _Measurement] = {
+    MEASUREMENT_WATER_LITERS: _Measurement(
+        parse=parse_water_volume_liters,
+        device_class=SensorDeviceClass.WATER,
+        unit=UnitOfVolume.LITERS,
+        precision=3,
+    ),
+}
 
 
 def _resolve_property(data: dict[str, Any] | None, candidates: list[str]) -> str | None:
@@ -109,7 +138,13 @@ class _Base(CoordinatorEntity[DelonghiCoordinator], SensorEntity):
 
 
 class DelonghiCounterSensor(_Base):
-    """Integer counter sensor with TOTAL_INCREASING state class."""
+    """Lifetime counter, TOTAL_INCREASING.
+
+    Publishes a plain count, or the scaled physical quantity declared for this
+    key in ``COUNTER_MEASUREMENTS``. TOTAL_INCREASING is kept for measured
+    counters too: they are lifetime meters, and a filter change resetting d555
+    is exactly what that state class is meant to absorb.
+    """
 
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
@@ -122,17 +157,15 @@ class DelonghiCounterSensor(_Base):
     ) -> None:
         super().__init__(coord, key, icon)
         self._prop_name = prop_name
-        self._key = key
         self._logged_unparseable = False
-        if key in {"water_total_quantity", "water_filter_quantity"}:
-            self._attr_device_class = SensorDeviceClass.WATER
-            self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
-            self._attr_suggested_display_precision = 3
-            self._attr_state_class = (
-                SensorStateClass.TOTAL
-                if key == "water_total_quantity"
-                else SensorStateClass.TOTAL_INCREASING
-            )
+        # A plain count unless const.py declares this counter as a measurement.
+        self._parse = parse_counter_value
+        measurement = _MEASUREMENTS.get(COUNTER_MEASUREMENTS.get(key, ""))
+        if measurement is not None:
+            self._parse = measurement.parse
+            self._attr_device_class = measurement.device_class
+            self._attr_native_unit_of_measurement = measurement.unit
+            self._attr_suggested_display_precision = measurement.precision
 
     @property
     def native_value(self) -> int | float | None:
@@ -146,11 +179,7 @@ class DelonghiCounterSensor(_Base):
         # some as a JSON object of per-recipe sub-counts. parse_counter_value
         # handles both; an unparseable scalar yields None and is logged once so
         # the format can be reported and the parser extended.
-        result = (
-            parse_water_volume_liters(val)
-            if self._key in {"water_total_quantity", "water_filter_quantity"}
-            else parse_counter_value(val)
-        )
+        result = self._parse(val)
         if result is None and not self._logged_unparseable:
             self._logged_unparseable = True
             _LOGGER.warning(

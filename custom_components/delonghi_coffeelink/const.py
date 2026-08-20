@@ -182,6 +182,26 @@ COUNTER_SENSORS = [
     (["d556_water_hardness"],              "water_hardness",        "Water Hardness",        "mdi:water-percent"),
 ]
 
+# Counters that carry a physical quantity instead of a plain count.
+#
+# Keyed by the ENTITY key of COUNTER_SENSORS above, not by datapoint name: a
+# measurement is the same measurement whichever datapoint a given model happens
+# to publish it under, so a new machine is supported by adding its datapoint to
+# the candidate list of the matching row - never by touching sensor.py. Values
+# are opaque tokens (this module stays free of Home Assistant imports so the
+# protocol tests can import it standalone); sensor.py maps them to device
+# classes and units.
+MEASUREMENT_WATER_LITERS = "water_liters"
+
+# De'Longhi machines report water volumes in millilitres, while Home Assistant's
+# water device class works in litres. Sources: DeLonghi's own statistics sheet
+# is in litres, sk7n4k3d/delonghi-ha applies scale=0.001 to the same datapoints,
+# and PyDeLonghiAPI derives lifetime litres as d553 / 1000 (see issue #19).
+COUNTER_MEASUREMENTS: dict[str, str] = {
+    "water_total_quantity": MEASUREMENT_WATER_LITERS,
+    "water_filter_quantity": MEASUREMENT_WATER_LITERS,
+}
+
 # Info sensors (not counters, general state):
 #   (candidate_property_names, entity_key, display_name, icon)
 INFO_SENSORS = [
