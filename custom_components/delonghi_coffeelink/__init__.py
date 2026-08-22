@@ -23,7 +23,7 @@ from .const import (
     SERVICE_START_BEVERAGE,
     SERVICE_STOP_BEVERAGE,
 )
-from .coordinator import DelonghiCoordinator
+from .coordinator import DelonghiCoordinator, async_send_to_all
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,24 +101,31 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 def _register_services(hass: HomeAssistant, coordinators: list[DelonghiCoordinator]) -> None:
-    """Register integration-level services (apply to all devices for now)."""
+    """Register integration-level services (apply to all devices for now).
+
+    NOTE (pre-existing): the handlers close over ONE config entry's
+    coordinators and are registered under the same service names, so with two
+    entries the last one registered wins. Targeting a specific device is the
+    real fix (issue #24) and is out of scope here.
+    """
     # Build lookup for beverage_id by key
     bev_by_key = {b[1]: b[0] for b in BEVERAGES}
 
     async def _start_beverage(call: ServiceCall) -> None:
         bev_id = bev_by_key[call.data["beverage"]]
-        for coord in coordinators:
-            await coord.async_send_beverage(bev_id, ACTION_START)
+        await async_send_to_all(
+            coordinators, lambda coord: coord.async_send_beverage(bev_id, ACTION_START)
+        )
 
     async def _stop_beverage(call: ServiceCall) -> None:
         bev_id = bev_by_key[call.data["beverage"]]
-        for coord in coordinators:
-            await coord.async_send_beverage(bev_id, ACTION_STOP)
+        await async_send_to_all(
+            coordinators, lambda coord: coord.async_send_beverage(bev_id, ACTION_STOP)
+        )
 
     async def _send_raw(call: ServiceCall) -> None:
         value = call.data["value_base64"]
-        for coord in coordinators:
-            await coord.async_send_raw(value)
+        await async_send_to_all(coordinators, lambda coord: coord.async_send_raw(value))
 
     hass.services.async_register(
         DOMAIN, SERVICE_START_BEVERAGE, _start_beverage, schema=SERVICE_START_SCHEMA

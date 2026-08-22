@@ -2,6 +2,75 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.19] - 2026-08-22
+
+Everything here comes from one field diagnosis on the reference PrimaDonna Soul:
+the machine had been off the network for ten days, and **the integration showed
+no sign of it**. The wake button kept writing a perfectly valid frame that the
+cloud accepted with `200 OK` and never delivered.
+
+### Fixed
+- **Commands sent to an unreachable machine are now refused, loudly.** Ayla
+  accepts a datapoint write for an offline machine and returns `200`/`201`, so
+  every wake, standby and beverage command was silently dropped - no toast, no
+  error, nothing in the log. Those paths now check the cloud's
+  `connection_status` first and raise a translated error naming the machine.
+  The guard is deliberately narrow:
+  - only an explicit `Offline` blocks - an unknown or unexpected status still
+    goes through;
+  - a machine merely in **standby stays online**, so waking it is unaffected;
+  - a status older than three polling intervals **stops blocking**, because it
+    only refreshes on a successful poll and a cloud outage would otherwise
+    freeze it and keep blaming the machine long after it came back;
+  - `send_raw_command` is **never** refused. It is the field-instrumentation
+    escape hatch and has to keep working precisely when the integration's own
+    idea of the machine's state is what is wrong. It warns instead.
+- **`Last Connected` told the truth about the wrong thing.** It exposed the
+  `data_updated_at` of the `device_connected` datapoint - an application-level
+  ping that goes stale while the machine keeps talking to the cloud (two months
+  out of date on the reference machine, which the cloud knew had connected ten
+  days earlier), and which on cloud-session models is written by this
+  integration itself. It now reports the cloud's own `connected_at`, i.e. when
+  the machine established its current connection - read it next to
+  `Connection Status`, not as a last-heard-from. No fallback: an unknown state
+  beats a plausible wrong date.
+- **`Machine Status` was permanently `unknown` on several Soul builds** (`#14`,
+  thanks `@MarcFu`, `@AKWillows`, `@hoogjoe`). The monitor datapoint was
+  hard-wired to `d302_monitor_machine`, but ECAM610.55 and ECAM612.55 publish
+  `d302_monitor`. It is now resolved from a candidate list, like every other
+  channel here, and the candidates are weighed on **every** poll: a candidate
+  only wins if its blob actually decodes, so neither an always-null datapoint
+  nor a stale one can lock the poll onto a name that never yields a status, and
+  a machine that moves to the other datapoint after a firmware update is
+  followed without a restart. The existing parser decodes those blobs unchanged;
+  only the name was wrong.
+- **A service call no longer stops at the first failing machine.** Services
+  address every machine of the config entry; one failure - unreachable, an Ayla
+  `5xx`, an expired token - used to abort the loop before the others were tried.
+  Every coordinator is now attempted and the first error is re-raised afterwards.
+
+### Changed
+- On cloud-session machines (Eletta Explore family) that publish their monitor
+  on `d302_monitor`, `Machine Status` starts working - and with it the
+  deep-standby nudge that gates on it, which had been silently dead there. Those
+  machines now get the usual session-refresh frame before a wake when they
+  report standby, exactly as the ones that already resolved a monitor did.
+- Minimum Home Assistant version declared to HACS raised from `2024.1.0` to
+  `2024.8.0`. The declared floor was already fiction: translated exceptions need
+  2024.2+, and the action metadata moved to `strings.json` in 0.3.18 needs
+  2024.8+.
+
+### Known limitations
+- A refused command still advances the button entity's "last pressed"
+  timestamp: Home Assistant stamps it before awaiting the press handler. The
+  error toast and the log line are what tell you it did not go through.
+- Services are registered per config entry under the same names, so with two
+  De'Longhi accounts the last entry registered wins. Per-device targeting is the
+  real fix (`#24`).
+- On a cloud-session machine with a cold session the write happens after the
+  handshake (up to `CONNECT_CONFIRM_TIMEOUT`); reachability is re-checked at
+  that point, but an error raised there lands in the log, not in the UI.
+
 ## [0.3.18] - 2026-08-20
 
 ### Added

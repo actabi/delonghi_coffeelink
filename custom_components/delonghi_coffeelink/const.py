@@ -80,10 +80,23 @@ POWER_STANDBY_PARAMS = bytes([0x01, 0x01])
 # Session refresh / deep-standby nudge (DlghIoT refresh(), params 03 02, CRC 5640).
 POWER_SESSION_REFRESH_PARAMS = bytes([0x03, 0x02])
 
-# Machine monitor (d302_monitor_machine) - operational state published by the
-# machine. Status codes from the DlghIoT client (framagit.org/mattgk/dlghiot),
-# contributed via PR #5.
-MONITOR_PROPERTY = "d302_monitor_machine"
+# Machine monitor - operational state published by the machine. Status codes
+# from the DlghIoT client (framagit.org/mattgk/dlghiot), contributed via PR #5.
+#
+# The datapoint name varies by model, like every other channel here: the Eletta
+# Explore publishes d302_monitor_machine while several Soul builds (ECAM610.55,
+# ECAM612.55) publish d302_monitor (issue #14). Listed in priority order, but
+# the coordinator only trusts a candidate whose blob actually DECODES: being
+# listed proves nothing (the reference Soul exposes a d303_monitor_extended it
+# never writes to) and carrying bytes proves nothing either (they could be a
+# stale or truncated packet).
+MONITOR_PROPERTY_CANDIDATES = ["d302_monitor_machine", "d302_monitor"]
+
+# How long the cloud's connection_status is trusted enough to REFUSE a command.
+# The status only refreshes on a successful poll, so a cloud outage or a broken
+# poll loop freezes it: past this age the preflight fails open rather than
+# blaming the machine for what may well be the cloud's fault.
+REACHABILITY_MAX_AGE = 3 * DEFAULT_SCAN_INTERVAL  # seconds
 MACHINE_STATUS = {
     0: "standby",
     1: "waking_up",
@@ -204,9 +217,10 @@ COUNTER_MEASUREMENTS: dict[str, str] = {
 
 # Info sensors (not counters, general state):
 #   (candidate_property_names, entity_key, display_name, icon)
+# "Last Connected" is NOT here: it does not come from a datapoint at all but
+# from the cloud device record (see sensor.DelonghiLastConnectedSensor).
 INFO_SENSORS = [
-    (["software_version"],                         "software_version", "Software Version", "mdi:chip"),
-    (["device_connected", "app_device_connected"], "last_connected",   "Last Connected",   "mdi:clock-outline"),
+    (["software_version"], "software_version", "Software Version", "mdi:chip"),
 ]
 
 PLATFORMS = ["sensor", "binary_sensor", "button"]

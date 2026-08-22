@@ -108,6 +108,7 @@ async def async_setup_entry(
                 continue
             entities.append(DelonghiInfoSensor(coord, prop_name, key, icon))
         entities.append(DelonghiConnectionSensor(coord))
+        entities.append(DelonghiLastConnectedSensor(coord))
         entities.append(DelonghiMachineStatusSensor(coord))
         entities.append(DelonghiLastCommandSensor(coord))
         if coord.profile.uses_cloud_session and APP_ID_PROPERTY in (coord.data or {}):
@@ -217,18 +218,11 @@ class DelonghiInfoSensor(_Base):
     ) -> None:
         super().__init__(coord, key, icon)
         self._prop_name = prop_name
-        if key == "last_connected":
-            self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
     def native_value(self) -> Any:
         prop = (self.coordinator.data or {}).get(self._prop_name)
         if not prop:
-            return None
-        if self._prop_name in ("device_connected", "app_device_connected"):
-            val = prop.get("data_updated_at")
-            if val:
-                return dt_util.parse_datetime(str(val))
             return None
         return prop.get("value")
 
@@ -246,11 +240,39 @@ class DelonghiConnectionSensor(_Base):
         return normalize_connection_status(self.coordinator.device.connection_status)
 
 
+class DelonghiLastConnectedSensor(_Base):
+    """When the machine last connected to the De'Longhi (Ayla) cloud.
+
+    Read from the device record's ``connected_at``, NOT from the
+    ``device_connected`` / ``app_device_connected`` datapoint this sensor used
+    to expose. That datapoint is an application-level ping: it goes stale while
+    the machine keeps talking to the cloud (two months out of date on the
+    reference Soul), and on cloud-session models it is written by this
+    integration itself - so it reported a comfortable timestamp for a machine
+    that had been off the network for ten days. No fallback on purpose: an
+    unknown state is worth more than a plausible wrong date.
+    """
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(coord, "last_connected", "mdi:clock-outline")
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def native_value(self) -> Any:
+        parsed = dt_util.parse_datetime(self.coordinator.device.connected_at or "")
+        # A TIMESTAMP sensor rejects a naive datetime with a ValueError on every
+        # state write; the cloud normally sends "...Z" but nothing guarantees it.
+        if parsed is None or parsed.tzinfo is None:
+            return None
+        return parsed
+
+
 class DelonghiMachineStatusSensor(_Base):
-    """Machine operational state decoded from ``d302_monitor_machine``
-    (standby, ready, rinsing, ...). Contributed via PR #5 (@TischenkoArseny,
-    based on the DlghIoT client). ``None``/unknown if the blob doesn't parse
-    on this model - the parse error is surfaced as an attribute.
+    """Machine operational state (standby, ready, rinsing, ...) decoded from the
+    monitor blob the machine publishes. Which datapoint carries it depends on the
+    model, so the coordinator resolves it per machine (issue #14). Contributed via
+    PR #5 (@TischenkoArseny, based on the DlghIoT client). ``None``/unknown if the
+    blob doesn't parse on this model - the parse error is surfaced as an attribute.
     """
 
     def __init__(self, coord: DelonghiCoordinator) -> None:

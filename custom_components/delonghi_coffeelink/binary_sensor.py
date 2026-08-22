@@ -1,7 +1,7 @@
 """Binary sensor platform for DeLonghi Coffee Link (ECAM maintenance alarms).
 
 Maintenance state is decoded from the ``switches``/``alarms`` bitfields of the
-``d302_monitor_machine`` MonitorV2 blob (see ``monitor.py``). The parser fills
+machine monitor MonitorV2 blob (see ``monitor.py``). The parser fills
 those bitfields for any model with a long-enough payload, but these maintenance
 entities are created ONLY for ECAM models (``uses_cloud_session`` is True, e.g.
 Eletta Explore) - so the PrimaDonna Soul gets no binary sensors and is untouched.

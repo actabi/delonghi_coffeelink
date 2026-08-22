@@ -57,6 +57,13 @@ class AylaDevice:
     sw_version: str
     lan_ip: str
     connection_status: str
+    # ISO-8601 timestamp at which the machine ESTABLISHED its current (or last)
+    # connection to the Ayla cloud - read next to connection_status, not as a
+    # last-heard-from: a machine online for months shows a months-old value.
+    # Still the only honest source: the device_connected datapoint is an
+    # application-level ping that goes stale while the machine keeps talking
+    # (and, on cloud-session models, is written by this integration itself).
+    connected_at: str = ""
     properties: dict[str, Any] = field(default_factory=dict)
 
 
@@ -271,6 +278,7 @@ class DelonghiAylaClient:
                     sw_version=d.get("sw_version", ""),
                     lan_ip=d.get("lan_ip", ""),
                     connection_status=d.get("connection_status", "Unknown"),
+                    connected_at=d.get("connected_at") or "",
                 )
             )
         return devices

@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -45,10 +46,12 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     INTEGRATION_CLOUD_APP_ID,
-    MONITOR_PROPERTY,
+    MONITOR_PROPERTY_CANDIDATES,
+    REACHABILITY_MAX_AGE,
     RECIPE_STORE_SAVE_DELAY,
     RECIPE_STORE_VERSION,
     RESPONSE_PROPERTY_CANDIDATES,
+    normalize_connection_status,
 )
 from .model_profiles import profile_for
 from .monitor import parse_monitor_b64
@@ -79,6 +82,11 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.command_property: str | None = None
         self.response_property: str | None = None
         self.connected_property: str | None = None
+        self.monitor_property: str | None = None
+        # When the device record (and therefore connection_status) was last
+        # refreshed. Set here because __init__.py hands us a freshly listed
+        # device, then updated on every successful poll.
+        self._device_seen_at: float = time.time()
         # Cloud session (ECAM / app_device_connected) — DlghIoT-compatible cache.
         # _integration_app_id may temporarily hold a foreign id (official app's
         # session, adopted to ride it); it reverts to the default once the app
@@ -121,8 +129,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # why a built wake is ignored while a verbatim app replay works - so we
         # learn and replay the app's power-on frame too.
         self.learned_wake_frame: str | None = None
-        # Decoded d302_monitor_machine state (standby/ready/...), surfaced via
-        # the Machine Status sensor. Empty dict until a blob parses.
+        # Decoded monitor state (standby/ready/...), surfaced via the Machine
+        # Status sensor; which datapoint it comes from is resolved per model
+        # (see MONITOR_PROPERTY_CANDIDATES). Empty dict until a blob parses.
         self.monitor: dict[str, Any] = {}
         self._store: Store = Store(
             hass, RECIPE_STORE_VERSION, f"{DOMAIN}_recipes_{device.dsn}"
@@ -167,6 +176,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for d in devices:
                 if d.dsn == self.device.dsn:
                     self.device = d
+                    self._device_seen_at = time.time()
                     break
             return props
         except CloudError as err:
@@ -174,15 +184,64 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             raise UpdateFailed(f"Error fetching Delonghi data: {err}") from err
 
+    @staticmethod
+    def _monitor_value(props: dict[str, Any], prop_name: str | None) -> str | None:
+        """The non-empty string value of a monitor candidate, else None."""
+        if not prop_name:
+            return None
+        prop = props.get(prop_name)
+        value = prop.get("value") if isinstance(prop, dict) else None
+        if isinstance(value, str) and value.strip():
+            return value
+        return None
+
+    def _decoded_monitor_candidates(
+        self, props: dict[str, Any]
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """``(name, decoded)`` per monitor candidate carrying data, in priority order."""
+        decoded: list[tuple[str, dict[str, Any]]] = []
+        for candidate in MONITOR_PROPERTY_CANDIDATES:
+            value = self._monitor_value(props, candidate)
+            if value is not None:
+                decoded.append((candidate, parse_monitor_b64(value)))
+        return decoded
+
     def _update_monitor(self, props: dict[str, Any]) -> None:
-        """Decode the machine monitor blob (diagnostic; must never break the poll)."""
+        """Decode the machine monitor blob (diagnostic; must never break the poll).
+
+        Which datapoint carries it depends on the model (issue #14), so the
+        candidates are weighed on EVERY poll rather than locked in once:
+
+        - a candidate only wins if its blob actually decodes. Being listed
+          proves nothing, and carrying bytes proves nothing either - a stale or
+          truncated packet would otherwise lock the poll onto a datapoint that
+          can never yield a status;
+        - when nothing decodes, the first candidate that at least had data is
+          kept, so its parse error reaches the sensor instead of a blank state;
+        - a machine that starts publishing on the other datapoint (firmware
+          update, or a one-off legacy value that goes quiet) is followed
+          automatically instead of needing a restart.
+        """
         try:
-            prop = props.get(MONITOR_PROPERTY)
-            value = prop.get("value") if isinstance(prop, dict) else None
-            if isinstance(value, str) and value.strip():
-                self.monitor = parse_monitor_b64(value)
-            else:
-                self.monitor = {}
+            available = self._decoded_monitor_candidates(props)
+            chosen = next(
+                ((name, mon) for name, mon in available if "error" not in mon), None
+            )
+            if chosen is None:
+                if not available:
+                    self.monitor = {}
+                    return
+                chosen = available[0]
+            name, monitor = chosen
+            if name != self.monitor_property:
+                _LOGGER.info(
+                    "Using monitor property '%s' for dsn=%s (oem_model=%s)",
+                    name,
+                    self.device.dsn,
+                    self.device.oem_model,
+                )
+                self.monitor_property = name
+            self.monitor = monitor
         except Exception:  # noqa: BLE001 - diagnostic must not break polling
             _LOGGER.debug("Monitor parse failed (non-fatal)", exc_info=True)
             self.monitor = {}
@@ -221,6 +280,68 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             f"No known {kind} property found for dsn={self.device.dsn} "
             f"(oem_model={self.device.oem_model}). Tried {candidates}. "
             "Please open an issue with debug logs."
+        )
+
+    # ------------------------------------------------------------------ #
+    # Reachability preflight
+    # ------------------------------------------------------------------ #
+
+    @property
+    def machine_is_offline(self) -> bool:
+        """True when the cloud reports this machine as disconnected.
+
+        Only an explicit "Offline" counts - an unknown, missing or unexpected
+        status must never block a command. On the reference PrimaDonna Soul a
+        machine sitting in standby stays Online (its WiFi module does not
+        sleep), so this says nothing about whether the machine is awake, only
+        about whether the cloud can reach it at all.
+        """
+        return normalize_connection_status(self.device.connection_status) == "offline"
+
+    @property
+    def reachability_is_current(self) -> bool:
+        """True while the cloud status is recent enough to act on.
+
+        connection_status only moves on a successful poll, so a cloud outage or
+        a stuck poll loop freezes whatever it last said. Refusing commands on a
+        frozen "Offline" would keep blaming the machine long after it came back,
+        so past REACHABILITY_MAX_AGE the preflight stops refusing. Failing open
+        is the safe direction: the worst case is the pre-0.3.19 behaviour.
+        """
+        return time.time() - self._device_seen_at <= REACHABILITY_MAX_AGE
+
+    def _ensure_machine_reachable(self) -> None:
+        """Refuse to send a command to a machine the cloud cannot reach.
+
+        Ayla happily accepts a datapoint write for an offline machine and
+        answers HTTP 200/201; the frame is simply never delivered. Without this
+        guard the failure is completely silent - no toast, no error log at all -
+        which is exactly how a machine that had been off the network for ten
+        days went unnoticed.
+        """
+        if not self.machine_is_offline:
+            return
+        if not self.reachability_is_current:
+            _LOGGER.warning(
+                "dsn=%s was last seen Offline %.0fs ago and the cloud has not been "
+                "reachable since; sending anyway rather than blocking on a stale "
+                "status.",
+                self.device.dsn,
+                time.time() - self._device_seen_at,
+            )
+            return
+        _LOGGER.warning(
+            "Refusing to send a command: dsn=%s is Offline on the De'Longhi cloud "
+            "(last connected: %s). The cloud would accept the write and the machine "
+            "would never receive it. Check that the machine is powered at the mains "
+            "and joined to WiFi (Coffee Link app).",
+            self.device.dsn,
+            self.device.connected_at or "unknown",
+        )
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="machine_offline",
+            translation_placeholders={"name": self.device.name or self.device.dsn},
         )
 
     # ------------------------------------------------------------------ #
@@ -526,6 +647,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self.device.dsn,
                         )
                         return
+            # The session handshake can take minutes (CONNECT_CONFIRM_TIMEOUT),
+            # so the reachability checked when the command was queued may no
+            # longer hold. Re-check at the point of writing.
+            self._ensure_machine_reachable()
             await send_fn()
         except Exception:  # noqa: BLE001 - strict: do not send after connect failure
             _LOGGER.warning(
@@ -823,6 +948,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Build + send a beverage command via the resolved command property."""
         from .command_builder import build_and_encode
 
+        self._ensure_machine_reachable()
+
         async def _do() -> None:
             table = (
                 self.learned_stop_frames if action == ACTION_STOP else self.learned_start_frames
@@ -864,6 +991,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_send_wake(self) -> None:
         """Send the WAKE / power-on command to bring the machine out of standby."""
+        self._ensure_machine_reachable()
         if not self.profile.uses_cloud_session:
 
             async def _do() -> None:
@@ -912,6 +1040,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         capture. Validated live on the reference Soul; on learn-and-replay
         models the per-device signature from a learned frame is appended.
         """
+        self._ensure_machine_reachable()
         if not self.profile.uses_cloud_session:
 
             async def _do() -> None:
@@ -941,7 +1070,21 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._with_cloud_session(_do)
 
     async def async_send_raw(self, value: str) -> None:
-        """Send a raw base64 command on the resolved command channel (advanced)."""
+        """Send a raw base64 command on the resolved command channel (advanced).
+
+        Deliberately NOT gated by the reachability preflight. This is the
+        field-instrumentation escape hatch, and the one thing it must keep doing
+        is letting a maintainer poke a machine when the integration's own idea of
+        its state is what is wrong. It warns instead of refusing.
+        """
+        if self.machine_is_offline:
+            _LOGGER.warning(
+                "Sending a raw command to dsn=%s while the cloud reports it Offline "
+                "(last connected: %s). The cloud will accept the write and the "
+                "machine will most likely never receive it.",
+                self.device.dsn,
+                self.device.connected_at or "unknown",
+            )
 
         async def _do() -> None:
             self._record_sent(value)
@@ -951,3 +1094,29 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_request_refresh()
 
         await self._with_cloud_session(_do)
+
+
+async def async_send_to_all(
+    coordinators: list[DelonghiCoordinator],
+    send: Callable[[DelonghiCoordinator], Awaitable[None]],
+) -> None:
+    """Run one command on every machine, then report the first failure.
+
+    A service call addresses every machine of the config entry, so one machine
+    failing - unreachable, a cloud 5xx, an expired token - must not swallow the
+    others: every coordinator is attempted, and the first exception is re-raised
+    afterwards so the caller still learns something did not go through.
+    """
+    errors: list[Exception] = []
+    for coord in coordinators:
+        try:
+            await send(coord)
+        except Exception as err:  # noqa: BLE001 - re-raised below, after the fan-out
+            errors.append(err)
+    if not errors:
+        return
+    # The first error is re-raised, so Home Assistant already surfaces it; only
+    # the ones it would hide are worth a log line of their own.
+    for err in errors[1:]:
+        _LOGGER.warning("A further machine did not get the command: %s", err)
+    raise errors[0]

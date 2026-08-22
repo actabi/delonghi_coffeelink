@@ -314,5 +314,10 @@
         "brew_over_ice": "Brew Over Ice"
       }
     }
+  },
+  "exceptions": {
+    "machine_offline": {
+      "message": "{name} ist in der De'Longhi-Cloud offline und kann keine Befehle empfangen. Prüfen Sie, ob die Maschine mit dem Stromnetz und dem WLAN verbunden ist (Coffee Link App), und versuchen Sie es erneut."
+    }
   }
 }

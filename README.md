@@ -23,8 +23,22 @@ Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla N
 - 21 beverage buttons (Espresso, Cappuccino, Latte Macchiato, Hot Water, Tea, etc.)
 - **Wake** and **Standby** buttons (power the machine on / off remotely)
 - Counters sensors (total beverages, per-drink counters, descale status)
+- **Machine Status** (standby, ready, rinsing, dispensing...) and **Connection
+  Status** sensors, plus **Last Connected** - when the machine established its
+  current cloud connection
 - Generic Stop button
 - Services for raw binary command injection (advanced use)
+
+### When the machine is unreachable
+
+The cloud accepts a command for a machine that is offline and answers `200 OK`;
+the machine simply never receives it. So when the cloud reports your machine as
+offline, commands are **refused with a clear error** instead of being written
+into the void - check that the machine is powered at the mains and joined to
+Wi-Fi. *Connection Status* tells you how the cloud sees it right now, and *Last
+Connected* when it last established that connection. A machine merely in standby
+stays online and can still be woken, and `send_raw_command` is never blocked so
+you can always poke a machine by hand.
 
 ## Eletta Explore (and other non-Soul models)
 

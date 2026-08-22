@@ -180,5 +180,10 @@
         "brew_over_ice": "Brew Over Ice"
       }
     }
+  },
+  "exceptions": {
+    "machine_offline": {
+      "message": "{name} je v cloudu De'Longhi offline a nemůže přijímat příkazy. Zkontrolujte, zda je kávovar připojen k elektrické síti a k Wi-Fi (aplikace Coffee Link), a zkuste to znovu."
+    }
   }
 }

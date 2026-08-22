@@ -1,9 +1,11 @@
-"""Parse ``d302_monitor_machine`` packets (MonitorV2) into machine status.
+"""Parse machine monitor packets (MonitorV2) into machine status.
 
-The machine continuously publishes a monitor blob on ``d302_monitor_machine``
-describing its operational state (standby, ready, rinsing, ...). Decoding it
-gives a proper "Machine Status" sensor instead of inferring state from
-side effects.
+The machine continuously publishes a monitor blob describing its operational
+state (standby, ready, rinsing, ...). Decoding it gives a proper "Machine
+Status" sensor instead of inferring state from side effects. The datapoint
+carrying it is model-dependent (``d302_monitor_machine`` on the Eletta Explore,
+``d302_monitor`` on several Soul builds - issue #14); the coordinator resolves
+it, this module only decodes what it is handed.
 
 Packet layout (machine->app EcamPacket, same envelope as command responses):
 
@@ -83,7 +85,7 @@ def _parse_monitor_contents(contents: bytes) -> dict[str, int]:
 
 
 def parse_monitor_b64(value_b64: str) -> dict[str, Any]:
-    """Decode a ``d302_monitor_machine`` value into status fields.
+    """Decode a machine monitor value into status fields.
 
     Never raises: returns ``{"error": ...}`` on any failure so the caller can
     surface the problem as a sensor attribute without breaking the update.
