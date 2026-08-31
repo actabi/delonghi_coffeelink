@@ -46,6 +46,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     INTEGRATION_CLOUD_APP_ID,
+    MONITOR_KEEPALIVE_INTERVAL,
     MONITOR_PROPERTY_CANDIDATES,
     REACHABILITY_MAX_AGE,
     RECIPE_STORE_SAVE_DELAY,
@@ -98,6 +99,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._device_app_id: int | None = None
         self._integration_app_id = self._default_app_id
         self._last_connect_at: float = 0
+        # Last `device_connected` keepalive; 0 = due immediately on first poll.
+        self._last_monitor_session_at: float = 0
         self._session_confirmed = False
         self._session_connect_lock = asyncio.Lock()
         self._session_cold_task: asyncio.Task[None] | None = None
@@ -164,7 +167,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.response_property = self._detect_property(
                     props, RESPONSE_PROPERTY_CANDIDATES, "response", required=False
                 )
-            if self.profile.uses_cloud_session and self.connected_property is None:
+            needs_connected = (
+                self.profile.uses_cloud_session or self.profile.keeps_monitor_session
+            )
+            if needs_connected and self.connected_property is None:
                 self.connected_property = self._detect_property(
                     props, CONNECTED_PROPERTY_CANDIDATES, "connected", required=False
                 )
@@ -178,11 +184,55 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.device = d
                     self._device_seen_at = time.time()
                     break
+            # Ask the machine to publish a fresh monitor blob for the NEXT poll.
+            # Done last, and deliberately not before the read above: the machine
+            # takes several seconds to answer, so the value it produces is the
+            # one this poll's successor will pick up.
+            await self._refresh_monitor_session()
             return props
         except CloudError as err:
             raise UpdateFailed(f"Ayla cloud error: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Error fetching Delonghi data: {err}") from err
+
+    async def _refresh_monitor_session(self) -> None:
+        """Keep the machine publishing its monitor datapoint (issue #14).
+
+        The PrimaDonna Soul publishes ``d302_monitor`` - its live status - only
+        when an app session is written to ``device_connected``; it does not push
+        status changes on its own. Verified on ECAM610.55 / ``DL-millcore`` /
+        ADA 1.5.3: a write is answered with a fresh monitor blob in ~4-7 s, and
+        with no write the datapoint had not moved in **five days** while the
+        machine was in daily use.
+
+        The failure this prevents is a silent one. Counters (``d7xx_*``) and
+        settings (``d2xx_*``) *are* pushed by the machine unprompted, so every
+        poll succeeds, ``connection_status`` stays ``Online`` and the integration
+        looks healthy - while Machine Status reports a value that may be days
+        old. Automations keyed on it simply never fire.
+
+        Never fatal: a failed keepalive costs one stale poll, so it must not take
+        the whole update down with it.
+        """
+        if not self.profile.keeps_monitor_session or not self.connected_property:
+            return
+        value = self.profile.monitor_session_value()
+        if value is None:
+            return
+        now = time.time()
+        if now - self._last_monitor_session_at < MONITOR_KEEPALIVE_INTERVAL:
+            return
+        self._last_monitor_session_at = now
+        try:
+            await self.client.async_set_property_value(
+                self.device.dsn, self.connected_property, value
+            )
+        except Exception:  # noqa: BLE001 - a missed keepalive must not fail the poll
+            _LOGGER.debug(
+                "Monitor session keepalive failed for dsn=%s (status may go stale)",
+                self.device.dsn,
+                exc_info=True,
+            )
 
     @staticmethod
     def _monitor_value(props: dict[str, Any], prop_name: str | None) -> str | None:

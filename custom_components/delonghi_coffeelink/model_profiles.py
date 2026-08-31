@@ -17,6 +17,8 @@ its ``matches()`` rule and (if it needs the learn-and-replay path) set
 """
 from __future__ import annotations
 
+import time
+
 from .command_builder import (
     build_and_encode,
     build_standby_encoded,
@@ -39,6 +41,22 @@ class ModelProfile:
     # ECAM models (Eletta / app_* channel) require a cloud session via
     # app_device_connected before commands are relayed; Soul does not.
     uses_cloud_session = False
+    # When True the coordinator rewrites the connected property on a timer so the
+    # machine keeps publishing its monitor datapoint (issue #14). This is a
+    # different concern from uses_cloud_session: that one gates *commands* and is
+    # driven on demand, this one keeps *status reads* alive and must be periodic.
+    keeps_monitor_session = False
+
+    def monitor_session_value(self) -> object | None:
+        """Payload written to the connected property to refresh the session.
+
+        ``None`` means "this profile has no keepalive". The Soul's
+        ``device_connected`` holds a plain unix timestamp - NOT the
+        ``base64(timestamp + app_id)`` blob that ECAM's ``app_device_connected``
+        takes (see ayla_client.async_post_cloud_session), which is why the two
+        paths cannot share one payload builder.
+        """
+        return None
 
     @classmethod
     def matches(cls, oem_model: str) -> bool:
@@ -82,10 +100,14 @@ class SoulProfile(ModelProfile):
     label = "PrimaDonna Soul (DL-millcore)"
     command_property = "data_request"
     learns_from_app = False
+    keeps_monitor_session = True
 
     @classmethod
     def matches(cls, oem_model: str) -> bool:
         return oem_model.startswith("DL-millcore")
+
+    def monitor_session_value(self) -> object | None:
+        return int(time.time())
 
 
 class ElettaProfile(ModelProfile):

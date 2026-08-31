@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **PrimaDonna Soul: Machine Status no longer freezes (#14).** The Soul publishes
+  `d302_monitor` only while an app session is written to `device_connected`, and
+  the integration wrote that once, during `async_setup_entry`. Once the session
+  lapsed the machine stopped publishing and the sensor held its last value - five
+  days, on the reporting machine, while it was in daily use. Nothing looked wrong:
+  the coordinator polled every 30 s with `success: True`, `connection_status`
+  stayed `Online`, and counters kept updating, because the machine *does* push
+  those unprompted. The coordinator now rewrites the session on a timer for
+  profiles that need it (`keeps_monitor_session`), which makes the machine
+  republish its status. A failed keepalive is logged and swallowed - it costs one
+  stale poll and must not fail the update.
+
+  The keepalive interval is the sensor's **resolution**, not just a timeout guard:
+  the Soul was measured never to publish a status change on its own, so it is
+  pinned to the poll interval.
+
+  Note for other models: the Soul's `device_connected` takes a **plain unix
+  timestamp**, unlike ECAM's `app_device_connected`, which takes
+  `base64(timestamp + signed_app_id)`. The payload is per profile for that reason.
+
 ## [0.3.19] - 2026-08-22
 
 Everything here comes from one field diagnosis on the reference PrimaDonna Soul:

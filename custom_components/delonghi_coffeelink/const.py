@@ -37,6 +37,12 @@ INTEGRATION_CLOUD_APP_ID = 0xC0FFEE11
 
 APP_ID_PROPERTY = "app_id"  # machine property: current session holder
 CONNECT_REFRESH_INTERVAL = 240  # refresh before 4*60s (device timeout ~300s)
+# Soul-style monitor keepalive (issue #14). The machine publishes d302_monitor -
+# its live status - only when an app session is (re)written to `device_connected`;
+# it does NOT push status changes on its own. So this interval is not just a
+# session timeout guard, it is the status sensor's resolution. Kept at the poll
+# interval so Machine Status is at most one poll behind the machine.
+MONITOR_KEEPALIVE_INTERVAL = DEFAULT_SCAN_INTERVAL
 CONNECT_SETTLE_DELAY = 4  # sleep after POST connect (background tasks only)
 CONNECT_CONFIRM_TIMEOUT = 300  # poll app_id after POST (Eletta; can exceed 180s on bad cloud days)
 CONNECT_CONFIRM_POLL_INTERVAL = 1  # seconds between app_id polls during confirm

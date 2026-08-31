@@ -816,3 +816,91 @@ def test_the_last_connected_sensor_is_registered_on_every_machine():
     assert "entities.append(DelonghiLastConnectedSensor(coord))" in source
     assert 'super().__init__(coord, "last_connected", "mdi:clock-outline")' in source
     assert "self.coordinator.device.connected_at" in source
+
+
+# --- Soul monitor-session keepalive (#14) -----------------------------------
+#
+# The field failure these pin down: on a PrimaDonna Soul (ECAM610.55,
+# DL-millcore, ADA 1.5.3) `d302_monitor` had not moved in five days while the
+# machine was in daily use, so Machine Status read `standby` throughout. Every
+# poll succeeded and `connection_status` stayed `Online` - the stale value was in
+# the cloud. The Soul publishes its monitor blob only when an app session is
+# written to `device_connected`, and that happened once, at setup. Counters kept
+# flowing the whole time, which is exactly what made it invisible.
+
+def _soul_poll_props():
+    props = _monitor_props(d302_monitor=SOUL_MONITOR_BLOB)
+    props["device_connected"] = {"value": "1788209091"}
+    return props
+
+
+def _keepalives(client):
+    return [w for w in client.writes if w[1] == "device_connected"]
+
+
+def test_a_soul_poll_refreshes_the_monitor_session():
+    """Without this write the machine simply stops publishing its status."""
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    asyncio.run(coord._async_update_data())
+
+    assert coord.connected_property == "device_connected"
+    assert len(_keepalives(client)) == 1
+    # A plain unix timestamp - NOT the base64(ts + app_id) blob that ECAM's
+    # app_device_connected takes (ayla_client.async_post_cloud_session). The two
+    # payloads are not interchangeable.
+    value = _keepalives(client)[0][2]
+    assert isinstance(value, int)
+    assert abs(value - int(time.time())) < 5
+
+
+def test_the_keepalive_is_rate_limited():
+    """Two polls inside one interval must still cost exactly one write."""
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    asyncio.run(coord._async_update_data())
+    asyncio.run(coord._async_update_data())
+
+    assert len(_keepalives(client)) == 1
+
+
+def test_the_keepalive_comes_round_again_once_the_interval_lapses():
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+    asyncio.run(coord._async_update_data())
+
+    coord._last_monitor_session_at -= const.MONITOR_KEEPALIVE_INTERVAL + 1
+    asyncio.run(coord._async_update_data())
+
+    assert len(_keepalives(client)) == 2
+
+
+def test_eletta_polls_do_not_get_the_soul_keepalive():
+    """Eletta takes its session per command through app_device_connected; a
+    periodic timestamp write there would fight the official app for it."""
+    props = _monitor_props(d302_monitor_machine=ELETTA_MONITOR_BLOB)
+    props["device_connected"] = {"value": "1788209091"}
+    client = _PollingClient(props=props)
+    coord = _coord("DL-striker-cb", client=client)
+
+    asyncio.run(coord._async_update_data())
+
+    assert _keepalives(client) == []
+
+
+def test_a_failed_keepalive_never_fails_the_poll():
+    """A missed keepalive costs one stale poll. If it propagated, a single cloud
+    hiccup would blank every entity instead."""
+
+    class _RefusingClient(_PollingClient):
+        async def async_set_property_value(self, dsn, prop, value):
+            raise RuntimeError("cloud refused the datapoint write")
+
+    coord = _coord("DL-millcore", client=_RefusingClient(props=_soul_poll_props()))
+
+    props = asyncio.run(coord._async_update_data())
+
+    assert props
+    assert coord.monitor["status_name"] == "standby"
