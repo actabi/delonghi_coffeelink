@@ -187,7 +187,20 @@ COUNTER_SENSORS = [
     (["d718_id16_hotwater"],               "total_hot_water",       "Total Hot Water",       "mdi:water"),
     (["d719_id22_tea"],                    "total_tea",             "Total Tea",             "mdi:tea"),
     (["d720_tot_id23_coffee_pot"],         "total_coffee_pot",      "Total Coffee Pot",      "mdi:coffee-maker"),
+    # ids 24/25/26 have buttons in BEVERAGES and counters on the machine, but were
+    # never exposed - every other id from 1 to 27 was. Confirmed against a live
+    # PrimaDonna Soul, which publishes all three (id26 is the machine's name for
+    # the Mug to Go beverage, 0x1a).
+    (["d727_id24_cortado"],                "total_cortado",         "Total Cortado",         "mdi:coffee"),
+    (["d728_id25_long_black"],             "total_long_black",      "Total Long Black",      "mdi:coffee"),
+    (["d729_id26_travel_mug"],             "total_mug_to_go",       "Total Mug to Go",       "mdi:coffee-to-go"),
     (["d730_tot_id27_brew_over_ice"],      "total_brew_over_ice",   "Total Brew Over Ice",   "mdi:coffee"),
+    # WARNING: the d-numbers below are NOT stable across models. On the reference
+    # PrimaDonna Soul these six numbers carry entirely different datapoints -
+    # d731_pregr_coff_cnt, d732_taste_b_bw, d735_b_water_qty,
+    # d736_bw_coff_water_qty, d737_bw_milk_time_qty, d738_espressi_water_qty.
+    # Matching is by EXACT full name, which is the only reason none of them are
+    # picked up and mislabelled. Never relax this to a prefix or a number.
     (["d731_tot_mug_hot"],                 "total_mug_hot",         "Total Mug Hot",         "mdi:coffee-to-go"),
     (["d732_tot_mug_cold"],                "total_mug_cold",        "Total Mug Cold",        "mdi:coffee-to-go"),
     (["d735_iced_bev"],                    "total_iced_bev",        "Total Iced Beverages",  "mdi:snowflake"),

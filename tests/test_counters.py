@@ -171,3 +171,54 @@ def test_the_bucket_names_no_longer_claim_to_be_totals_or_water():
     assert names["total_beverages"] != "Total Beverages"
     assert "Water" not in names["total_water"]
     assert "Milk" in names["total_water"]
+
+
+# --- per-beverage counters --------------------------------------------------
+#
+# The machine publishes one counter per beverage id. ids 24/25/26 (cortado,
+# long black, mug to go) had buttons in BEVERAGES and datapoints on the machine
+# but no sensor - every other id from 1 to 27 had one.
+
+MISSING_BEFORE = {
+    "d727_id24_cortado": "total_cortado",
+    "d728_id25_long_black": "total_long_black",
+    "d729_id26_travel_mug": "total_mug_to_go",
+}
+
+
+def test_the_three_forgotten_beverage_counters_are_exposed():
+    for datapoint, key in MISSING_BEFORE.items():
+        assert _counter_key_for(datapoint) == key, datapoint
+
+
+def test_every_exposed_beverage_counter_has_a_button_to_match():
+    """A counter for a drink the integration cannot start would be a mismatch."""
+    beverage_keys = {key for _id, key, _name, _icon in const.BEVERAGES}
+    for datapoint, key in MISSING_BEFORE.items():
+        assert key.removeprefix("total_") in beverage_keys, datapoint
+
+
+# --- the d-number collision landmine ----------------------------------------
+#
+# d-numbers are NOT stable across models. On the reference PrimaDonna Soul the
+# six numbers COUNTER_SENSORS guesses at carry completely unrelated datapoints.
+# Exact-full-name matching is the only reason none of them is picked up and
+# published under a confident, wrong label. This pins that.
+
+SOUL_COLLISIONS = {
+    "d731_tot_mug_hot": "d731_pregr_coff_cnt",
+    "d732_tot_mug_cold": "d732_taste_b_bw",
+    "d735_iced_bev": "d735_b_water_qty",
+    "d736_mug_bev": "d736_bw_coff_water_qty",
+    "d737_mug_iced_bev": "d737_bw_milk_time_qty",
+    "d738_cold_brew_bev": "d738_espressi_water_qty",
+}
+
+
+def test_a_datapoint_sharing_only_the_d_number_is_never_matched():
+    for guessed, real_on_soul in SOUL_COLLISIONS.items():
+        assert guessed.split("_")[0] == real_on_soul.split("_")[0], "same d-number"
+        assert _counter_key_for(real_on_soul) is None, (
+            f"{real_on_soul} must not be published under the label meant for "
+            f"{guessed} - matching has to stay exact-full-name"
+        )

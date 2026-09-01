@@ -28,6 +28,20 @@ All notable changes to this project will be documented in this file.
 - **`total_other_beverages` (`d702_tot_bev_other`)**, which was not exposed at
   all. Without it the four buckets can never be reconciled against the machine's
   own lifetime total.
+- **Counters for beverage ids 24, 25 and 26** - `total_cortado`,
+  `total_long_black`, `total_mug_to_go` (`d727_id24_cortado`,
+  `d728_id25_long_black`, `d729_id26_travel_mug`). These three drinks had buttons
+  in `BEVERAGES` and counters on the machine, but no sensor; every other id from
+  1 to 27 had one.
+
+### Changed
+- Documented, and pinned with a test, that `COUNTER_SENSORS` matches datapoints
+  by **exact full name**. d-numbers are not stable across models: the six
+  `mug`/`iced`/`cold brew` entries name numbers that on a PrimaDonna Soul carry
+  `d731_pregr_coff_cnt`, `d732_taste_b_bw`, `d735_b_water_qty`,
+  `d736_bw_coff_water_qty`, `d737_bw_milk_time_qty` and
+  `d738_espressi_water_qty`. Exact matching is the only reason none of them is
+  published under a confident, wrong label.
 
 ## [0.3.19] - 2026-08-22
 

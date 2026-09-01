@@ -165,6 +165,15 @@
       },
       "total_other_beverages": {
         "name": "Total Other Beverages"
+      },
+      "total_cortado": {
+        "name": "Total Cortado"
+      },
+      "total_long_black": {
+        "name": "Total Long Black"
+      },
+      "total_mug_to_go": {
+        "name": "Total Mug to Go"
       }
     },
     "button": {

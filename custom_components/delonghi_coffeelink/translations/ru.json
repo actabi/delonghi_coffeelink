@@ -165,6 +165,15 @@
       },
       "total_other_beverages": {
         "name": "Всего прочих напитков"
+      },
+      "total_cortado": {
+        "name": "Всего кортадо"
+      },
+      "total_long_black": {
+        "name": "Всего лонг блэк"
+      },
+      "total_mug_to_go": {
+        "name": "Всего напитков Mug to Go"
       }
     },
     "button": {
