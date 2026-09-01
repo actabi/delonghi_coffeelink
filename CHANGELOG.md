@@ -18,8 +18,12 @@ All notable changes to this project will be documented in this file.
   stale poll and must not fail the update.
 
   The keepalive interval is the sensor's **resolution**, not just a timeout guard:
-  the Soul was measured never to publish a status change on its own, so it is
-  pinned to the poll interval.
+  the Soul was measured never to publish a status change on its own. It is set to
+  **half** the poll interval, and must stay strictly below it - equal to the poll
+  period, the `now - last < INTERVAL` guard rejects the very poll it rides on
+  (the stamp lands a few hundred ms in, so the next poll arrives a hair under one
+  interval later). That skipped roughly every other cycle: successive writes were
+  measured at +61 / +30 / +31 / +60 s, silently halving the resolution.
 
   Note for other models: the Soul's `device_connected` takes a **plain unix
   timestamp**, unlike ECAM's `app_device_connected`, which takes
