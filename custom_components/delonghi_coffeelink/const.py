@@ -45,6 +45,18 @@ CONNECT_CONFIRM_POLL_INTERVAL = 1  # seconds between app_id polls during confirm
 CLOUD_HTTP_RETRY_COUNT = 2
 CLOUD_HTTP_RETRY_BACKOFF = 1.5  # seconds; multiplied by attempt index
 CLOUD_TRANSIENT_HTTP_CODES = frozenset({429, 502, 503, 504})
+# Second line of defence, behind the HTTP retry above: keep serving the last good
+# data for this many CONSECUTIVE failed polls before admitting the device is
+# unavailable (~2 min at a 30 s interval).
+#
+# A coordinator's failure blast radius is every entity it owns. One UpdateFailed
+# takes every non-numeric entity of the device `-> unavailable` and the next poll
+# writes them all back - and Home Assistant's logbook renders BOTH edges of a
+# `button` as "Pressed", because a button's state IS its last-press timestamp. So
+# a single gateway hiccup fabricates a full sweep of beverage presses that were
+# never made, on a machine whose lifetime counters never moved. Observed on
+# ECAM610.55: ten such blips in seven days, every one lasting exactly one poll.
+TRANSIENT_FAILURE_TOLERANCE = 3
 
 # Config
 CONF_EMAIL = "email"

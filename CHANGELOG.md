@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **One Ayla `504` no longer marks every entity unavailable - and no longer
+  invents a full sweep of beverage presses.** `async_get_properties` and
+  `async_get_devices` did a bare `session.get()` + `await resp.json()` with no
+  status check, so a gateway error carrying a `text/plain` body surfaced as an
+  unretryable `aiohttp.ContentTypeError`. The retry helper already existed and
+  already handled `{429, 502, 503, 504}` correctly - reading the body as text
+  *before* parsing - but its docstring said "Eletta session paths only" and the
+  two hot polling paths bypassed it. They now go through it.
+
+  This matters far more than a single failed poll suggests.
+  `CoordinatorEntity.available` is just `coordinator.last_update_success`, so
+  one `UpdateFailed` takes **every** entity of the device to `unavailable` and
+  the next poll writes them all back. Home Assistant's logbook renders **both**
+  edges of a `button` as "Pressed", because a button's state *is* its last-press
+  timestamp - so a single hiccup fabricates a complete list of beverages
+  "brewed", on a machine whose lifetime counters never moved. The numeric
+  counters flap too, but the logbook drops sensors carrying a unit, which is
+  exactly why the artifact looks button-specific and therefore believable.
+
+  Observed on an ECAM610.55: ten such blips in seven days, every one lasting
+  exactly one poll interval.
+
+### Added
+- `TRANSIENT_FAILURE_TOLERANCE` (3): behind the HTTP retry, the coordinator now
+  keeps serving the last good snapshot for up to three consecutive failed polls
+  before letting entities go unavailable. Never silent - each tolerated poll
+  logs a warning, so a genuine outage is visible from the first failure rather
+  than only after two minutes. The first refresh is never tolerated: with no
+  previous data there is nothing to serve, and setup must still fail with
+  `ConfigEntryNotReady`.
+
+  `async_set_property_value` is **deliberately left un-retried**. It is the
+  command channel; a blind POST retry there could brew two coffees. It already
+  checks `resp.status` before parsing, so it raises a clean `CloudError`.
+
 ## [0.3.19] - 2026-08-22
 
 Everything here comes from one field diagnosis on the reference PrimaDonna Soul:

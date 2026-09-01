@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import importlib.util
+import json as jsonlib
 import sys
 import time
 import types
@@ -658,11 +659,18 @@ def test_a_corrupt_blob_never_breaks_the_poll():
 
 
 class _FakeResponse:
-    def __init__(self, payload) -> None:
+    def __init__(self, payload, status: int = 200, content_type: str = "application/json") -> None:
         self._payload = payload
+        self.status = status
+        self.content_type = content_type
 
     async def json(self):
         return self._payload
+
+    async def text(self):
+        if isinstance(self._payload, str):
+            return self._payload
+        return jsonlib.dumps(self._payload)
 
     async def __aenter__(self):
         return self
@@ -672,12 +680,25 @@ class _FakeResponse:
 
 
 class _FakeSession:
-    """aiohttp.ClientSession.get(), enough for async_get_devices."""
+    """aiohttp.ClientSession, enough for the client's read paths.
 
-    def __init__(self, payload) -> None:
+    ``request()`` is the one that matters: every Ayla read goes through
+    ``_request_json``. A canned list of responses lets a test replay a gateway
+    error followed by a good answer.
+    """
+
+    def __init__(self, payload, responses: list | None = None) -> None:
         self._payload = payload
+        self._responses = list(responses or [])
+        self.calls: list[tuple[str, str]] = []
 
     def get(self, url, headers=None):
+        return _FakeResponse(self._payload)
+
+    def request(self, method, url, headers=None, json=None, data=None):
+        self.calls.append((method, url))
+        if self._responses:
+            return self._responses.pop(0)
         return _FakeResponse(self._payload)
 
 
@@ -816,3 +837,116 @@ def test_the_last_connected_sensor_is_registered_on_every_machine():
     assert "entities.append(DelonghiLastConnectedSensor(coord))" in source
     assert 'super().__init__(coord, "last_connected", "mdi:clock-outline")' in source
     assert "self.coordinator.device.connected_at" in source
+
+
+# --- transient cloud failures must not flap every entity --------------------
+#
+# Ayla answers 504/503 with a text/plain body often enough to matter (ten blips
+# in seven days on the reference machine, each exactly one poll long). The cost
+# is out of all proportion to the fault: CoordinatorEntity.available is just
+# coordinator.last_update_success, so one UpdateFailed takes every entity of the
+# device unavailable and the next poll brings them all back - and the logbook
+# renders both edges of a `button` as "Pressed", inventing a full sweep of
+# beverage presses on a machine nobody touched.
+
+class _FlakyClient(_PollingClient):
+    """A polling client whose next N property reads blow up."""
+
+    def __init__(self, failures: int = 0, **kw) -> None:
+        super().__init__(**kw)
+        self.failures = failures
+        self.calls = 0
+
+    async def async_get_properties(self, dsn: str) -> dict:
+        self.calls += 1
+        if self.failures > 0:
+            self.failures -= 1
+            raise RuntimeError("504, message='Attempt to decode JSON with "
+                               "unexpected mimetype: text/plain'")
+        return self.props
+
+
+def _primed(client):
+    """A coordinator that has already completed one successful poll."""
+    coord = _coord("DL-millcore", client=client)
+    coord.data = asyncio.run(coord._async_update_data())
+    assert coord.data is not None
+    return coord
+
+
+def test_a_single_transient_failure_keeps_the_last_good_data():
+    """The measured case: one 504, recovered on the next poll."""
+    client = _FlakyClient(props={"d700_tot_bev_b": {"value": 4638}})
+    coord = _primed(client)
+    good = coord.data
+
+    client.failures = 1
+    assert asyncio.run(coord._async_update_data()) is good  # same object, not a refetch
+    assert coord._consecutive_failures == 1
+
+    coord.data = asyncio.run(coord._async_update_data())
+    assert coord._consecutive_failures == 0
+
+
+def test_a_sustained_outage_is_still_reported():
+    """Tolerance must not become a mute button: the 4th failure gives up."""
+    client = _FlakyClient(props={"d700_tot_bev_b": {"value": 4638}})
+    coord = _primed(client)
+
+    client.failures = 99
+    for _ in range(const.TRANSIENT_FAILURE_TOLERANCE):
+        asyncio.run(coord._async_update_data())
+    with pytest.raises(coordinator.UpdateFailed):
+        asyncio.run(coord._async_update_data())
+
+
+def test_the_tolerance_budget_resets_after_a_success():
+    """Two blips, a good poll, then three more must not trip the limit."""
+    client = _FlakyClient(props={"d700_tot_bev_b": {"value": 4638}})
+    coord = _primed(client)
+
+    client.failures = 2
+    asyncio.run(coord._async_update_data())
+    asyncio.run(coord._async_update_data())
+    coord.data = asyncio.run(coord._async_update_data())   # recovery
+    assert coord._consecutive_failures == 0
+
+    client.failures = const.TRANSIENT_FAILURE_TOLERANCE
+    for _ in range(const.TRANSIENT_FAILURE_TOLERANCE):
+        asyncio.run(coord._async_update_data())            # no raise
+
+
+def test_the_very_first_poll_is_never_tolerated():
+    """With no previous snapshot there is nothing to serve - setup must fail."""
+    client = _FlakyClient(failures=1, props={})
+    coord = _coord("DL-millcore", client=client)
+    assert coord.data is None
+    with pytest.raises(coordinator.UpdateFailed):
+        asyncio.run(coord._async_update_data())
+
+
+def test_a_gateway_error_with_a_text_body_is_retried_not_raised():
+    """The exact shape that used to escape as an unretryable ContentTypeError.
+
+    Ayla answers 504 with a ``text/plain`` body. The old async_get_devices /
+    async_get_properties called ``resp.json()`` directly with no status check, so
+    aiohttp raised ContentTypeError and the retry loop - which existed, and was
+    correct - never saw it because those paths bypassed it entirely.
+    """
+    good = [{"device": {"dsn": "AC000W019023280", "product_name": "x",
+                        "oem_model": "DL-millcore", "model": "AY008ESP1",
+                        "sw_version": "ADA 1.5.3", "lan_ip": "10.0.0.1",
+                        "connection_status": "Online",
+                        "connected_at": "2026-08-12T04:01:46Z"}}]
+    session = _FakeSession(good, responses=[
+        _FakeResponse("504 Gateway Time-out", status=504, content_type="text/plain"),
+        _FakeResponse(good),
+    ])
+    client = ac.DelonghiAylaClient(session, "user@example.com", "secret")
+    client._access_token = "token"
+    client._expires_at = time.time() + 3600
+
+    devices = asyncio.run(client.async_get_devices())
+
+    assert [d.dsn for d in devices] == ["AC000W019023280"]
+    assert len(session.calls) == 2, "the 504 must have been retried, not surfaced"

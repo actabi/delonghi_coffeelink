@@ -51,6 +51,7 @@ from .const import (
     RECIPE_STORE_SAVE_DELAY,
     RECIPE_STORE_VERSION,
     RESPONSE_PROPERTY_CANDIDATES,
+    TRANSIENT_FAILURE_TOLERANCE,
     normalize_connection_status,
 )
 from .model_profiles import profile_for
@@ -98,6 +99,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._device_app_id: int | None = None
         self._integration_app_id = self._default_app_id
         self._last_connect_at: float = 0
+        # Consecutive failed polls currently being ridden out; reset on success.
+        self._consecutive_failures = 0
         self._session_confirmed = False
         self._session_connect_lock = asyncio.Lock()
         self._session_cold_task: asyncio.Task[None] | None = None
@@ -148,6 +151,47 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await super().async_shutdown()
 
     async def _async_update_data(self) -> dict[str, Any]:
+        """Poll the cloud, riding out a short run of transient failures.
+
+        Ayla's endpoints intermittently answer 504/503. The HTTP layer retries
+        those (see ayla_client._request_json); this catches a blip that outlives
+        the retries. Rather than let one bad poll mark the whole device
+        unavailable, keep serving the last good snapshot for up to
+        TRANSIENT_FAILURE_TOLERANCE consecutive failures.
+
+        Why this matters more than it looks: `CoordinatorEntity.available` is
+        just `coordinator.last_update_success`, so one UpdateFailed flips every
+        entity this coordinator owns, and the recovery write is indistinguishable
+        from a real event on entity types whose state IS an event. The logbook
+        duly reports every beverage button as "Pressed", twice, on a machine
+        nobody touched.
+
+        Deliberately NOT silent: each tolerated failure logs a warning, so a real
+        outage is visible from the first poll rather than only after ~2 min. The
+        first refresh is never tolerated - with no previous data there is nothing
+        to serve, and setup must fail honestly with ConfigEntryNotReady.
+        """
+        try:
+            props = await self._fetch_once()
+        except UpdateFailed as err:
+            self._consecutive_failures += 1
+            if (
+                self._consecutive_failures <= TRANSIENT_FAILURE_TOLERANCE
+                and self.data is not None
+            ):
+                _LOGGER.warning(
+                    "Delonghi poll failed (%d/%d tolerated), serving last known "
+                    "data to keep entities available: %s",
+                    self._consecutive_failures,
+                    TRANSIENT_FAILURE_TOLERANCE,
+                    err,
+                )
+                return self.data
+            raise
+        self._consecutive_failures = 0
+        return props
+
+    async def _fetch_once(self) -> dict[str, Any]:
         """Fetch all properties + refresh device meta."""
         try:
             props = await self.client.async_get_properties(self.device.dsn)
