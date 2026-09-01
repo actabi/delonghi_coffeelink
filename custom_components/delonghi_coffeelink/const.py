@@ -159,10 +159,18 @@ BEVERAGES = [
 #   - PrimaDonna Soul (DL-millcore): d700_tot_bev_b, d701_tot_bev_bw, d703_tot_bev_w, d825_descale_status
 #   - Eletta Explore (DL-striker-cb): d701_tot_bev_b (no milk/water/descale equivalents exposed)
 COUNTER_SENSORS = [
-    (["d700_tot_bev_b", "d701_tot_bev_b"], "total_beverages",       "Total Beverages",       "mdi:counter"),
+    # The b / bw / w / other suffixes are BLACK / BLACK+WHITE / WHITE / OTHER --
+    # not "beverages" / "milk drinks" / "water". Verified by arithmetic against a
+    # live PrimaDonna Soul (2026-09-01): d700 == espresso 4 + coffee 4633 +
+    # doppio 1 == 4638 exactly, and d703 == hot_milk == 24 exactly. d700 is
+    # therefore NOT the machine's lifetime total; that is d700 + d701 + d703 +
+    # d702, which on the reference machine is 4917 against a "Total Beverages"
+    # sensor reading 4638.
+    (["d700_tot_bev_b", "d701_tot_bev_b"], "total_beverages",       "Total Black Beverages", "mdi:counter"),
+    (["d702_tot_bev_other"],               "total_other_beverages", "Total Other Beverages", "mdi:counter"),
     (["d704_tot_bev_espressi"],            "total_espresso",        "Total Espresso",        "mdi:coffee"),
-    (["d701_tot_bev_bw"],                  "total_milk_drinks",     "Total Milk Drinks",     "mdi:cup"),
-    (["d703_tot_bev_w"],                   "total_water",           "Total Water",           "mdi:water"),
+    (["d701_tot_bev_bw"],                  "total_milk_drinks",     "Total Coffee + Milk Beverages", "mdi:cup"),
+    (["d703_tot_bev_w"],                   "total_water",           "Total Milk-Only Beverages", "mdi:cup-outline"),
     (["d705_tot_id1_espr"],                "total_espresso_alt",    "Total Espresso Alt",    "mdi:coffee"),
     (["d706_tot_id2_coffee"],              "total_coffee",          "Total Coffee",          "mdi:coffee"),
     (["d707_tot_id3_long"],                "total_long_coffee",     "Total Long Coffee",     "mdi:coffee"),

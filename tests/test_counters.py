@@ -121,3 +121,53 @@ def test_water_counters_are_declared_as_litres():
         "water_total_quantity": const.MEASUREMENT_WATER_LITERS,
         "water_filter_quantity": const.MEASUREMENT_WATER_LITERS,
     }
+
+
+# --- the b / bw / w / other buckets ----------------------------------------
+#
+# These four suffixes are BLACK / BLACK+WHITE / WHITE / OTHER. They were read as
+# "beverages" / "milk drinks" / "water", which made d700 look like the machine's
+# lifetime total when it counts only black drinks. Verified by arithmetic on a
+# live PrimaDonna Soul (2026-09-01):
+#
+#     d700_tot_bev_b  4638 == espresso 4 + coffee 4633 + doppio 1   (exact)
+#     d703_tot_bev_w    24 == hot_milk 24                           (exact)
+#     lifetime total  4917 == d700 4638 + d701 248 + d703 24 + d702 7
+#
+# so "Total Beverages" under-reported the machine by ~6%. This pins the mapping
+# so a future edit cannot quietly re-label them again.
+
+const = _load("const", "const.py")
+
+BUCKET_KEYS = {
+    "d700_tot_bev_b": "total_beverages",
+    "d701_tot_bev_bw": "total_milk_drinks",
+    "d703_tot_bev_w": "total_water",
+    "d702_tot_bev_other": "total_other_beverages",
+}
+
+
+def _counter_key_for(datapoint: str) -> str | None:
+    for candidates, key, _name, _icon in const.COUNTER_SENSORS:
+        if datapoint in candidates:
+            return key
+    return None
+
+
+def test_each_bucket_datapoint_is_exposed_under_its_own_key():
+    for datapoint, key in BUCKET_KEYS.items():
+        assert _counter_key_for(datapoint) == key, datapoint
+
+
+def test_the_other_bucket_is_not_dropped_on_the_floor():
+    """d702 was missing entirely, so the four buckets could never reconcile."""
+    assert _counter_key_for("d702_tot_bev_other") is not None
+
+
+def test_the_bucket_names_no_longer_claim_to_be_totals_or_water():
+    """The two labels that were actively wrong, guarded by meaning not wording."""
+    names = {key: name for _c, key, name, _i in const.COUNTER_SENSORS}
+    assert "Black" in names["total_beverages"]
+    assert names["total_beverages"] != "Total Beverages"
+    assert "Water" not in names["total_water"]
+    assert "Milk" in names["total_water"]

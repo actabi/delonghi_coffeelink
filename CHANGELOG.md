@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **`Total Beverages` was not the total, and `Total Water` had nothing to do
+  with water.** The `d700_tot_bev_b` / `d701_tot_bev_bw` / `d703_tot_bev_w`
+  suffixes are **b**lack / **b**lack+**w**hite / **w**hite, not
+  "beverages" / "milk drinks" / "water". Verified by arithmetic against a live
+  PrimaDonna Soul rather than by reading the names:
+
+  | datapoint | was labelled | actually | proof on the reference machine |
+  |---|---|---|---|
+  | `d700_tot_bev_b` | Total Beverages | black drinks only | espresso 4 + coffee 4633 + doppio 1 = **4638 exact** |
+  | `d703_tot_bev_w` | Total Water | milk-only drinks | hot_milk **24 = 24 exact** |
+  | `d701_tot_bev_bw` | Total Milk Drinks | coffee + milk | 248 |
+
+  So `Total Beverages` under-reported that machine's lifetime by ~6 %: the real
+  figure is `4638 + 248 + 24 + 7 = 4917`.
+
+  `entity_id`s are deliberately **unchanged** - `sensor.…_total_water` keeps its
+  slug while displaying "Total Milk-Only Beverages". Renaming would break every
+  existing history, statistic and automation for no functional gain.
+
+### Added
+- **`total_other_beverages` (`d702_tot_bev_other`)**, which was not exposed at
+  all. Without it the four buckets can never be reconciled against the machine's
+  own lifetime total.
+
 ## [0.3.19] - 2026-08-22
 
 Everything here comes from one field diagnosis on the reference PrimaDonna Soul:

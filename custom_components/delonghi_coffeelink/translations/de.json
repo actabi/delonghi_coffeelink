@@ -23,16 +23,16 @@
   "entity": {
     "sensor": {
       "total_beverages": {
-        "name": "Getränke gesamt"
+        "name": "Schwarze Getränke gesamt"
       },
       "total_espresso": {
         "name": "Espresso gesamt"
       },
       "total_milk_drinks": {
-        "name": "Milchgetränke gesamt"
+        "name": "Kaffee-Milch-Getränke gesamt"
       },
       "total_water": {
-        "name": "Wasserbezüge gesamt"
+        "name": "Reine Milchgetränke gesamt"
       },
       "total_espresso_alt": {
         "name": "Espresso (alternativ) gesamt"
@@ -162,6 +162,9 @@
       },
       "last_captured_command": {
         "name": "Zuletzt mitgeschnittener Befehl"
+      },
+      "total_other_beverages": {
+        "name": "Sonstige Getränke gesamt"
       }
     },
     "button": {
