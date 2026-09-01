@@ -127,7 +127,14 @@ class DelonghiAylaClient:
         ok_status: frozenset[int] | set[int] | None = None,
         op: str = "",
     ) -> Any:
-        """HTTP request with transient retry (Eletta session paths only)."""
+        """HTTP request with transient retry.
+
+        Every Ayla call should come through here. It reads the body as text
+        *before* parsing, so a gateway error carrying a ``text/plain`` body
+        cannot blow up in ``resp.json()`` - which is precisely how 504s escaped
+        as an unretryable ``aiohttp.ContentTypeError`` while
+        ``async_get_properties`` / ``async_get_devices`` bypassed this helper.
+        """
         await self.async_ensure_auth()
         if ok_status is None:
             ok_status = frozenset({200, 201})
@@ -262,10 +269,8 @@ class DelonghiAylaClient:
 
     async def async_get_devices(self) -> list[AylaDevice]:
         """List all Ayla devices tied to this account."""
-        await self.async_ensure_auth()
         url = f"{AYLA_EU_ADS_URL}/apiv1/devices.json"
-        async with self._session.get(url, headers=self._auth_headers()) as resp:
-            data = await resp.json()
+        data = await self._request_json("GET", url, op="get_devices") or []
         devices: list[AylaDevice] = []
         for wrap in data:
             d = wrap.get("device", wrap)
@@ -285,10 +290,8 @@ class DelonghiAylaClient:
 
     async def async_get_properties(self, dsn: str) -> dict[str, Any]:
         """Fetch all properties of a device, keyed by property name."""
-        await self.async_ensure_auth()
         url = f"{AYLA_EU_ADS_URL}/apiv1/dsns/{dsn}/properties.json"
-        async with self._session.get(url, headers=self._auth_headers()) as resp:
-            data = await resp.json()
+        data = await self._request_json("GET", url, op="get_properties") or []
         props: dict[str, Any] = {}
         for item in data:
             p = item.get("property", {})
