@@ -40,9 +40,17 @@ CONNECT_REFRESH_INTERVAL = 240  # refresh before 4*60s (device timeout ~300s)
 # Soul-style monitor keepalive (issue #14). The machine publishes d302_monitor -
 # its live status - only when an app session is (re)written to `device_connected`;
 # it does NOT push status changes on its own. So this interval is not just a
-# session timeout guard, it is the status sensor's resolution. Kept at the poll
-# interval so Machine Status is at most one poll behind the machine.
-MONITOR_KEEPALIVE_INTERVAL = DEFAULT_SCAN_INTERVAL
+# session timeout guard, it is the status sensor's resolution.
+#
+# MUST stay strictly below DEFAULT_SCAN_INTERVAL. With the two equal, the
+# `now - last < INTERVAL` guard in the coordinator skipped roughly every other
+# poll: the keepalive is stamped a few hundred ms into a poll, so the next poll
+# arrives a hair under one interval later and the write slips a whole cycle.
+# Measured on the reference Soul - successive `device_connected` writes were
+# +61 / +30 / +31 / +60 s. Since this interval IS the status resolution, that
+# silently halved it. Half the interval keeps every scheduled poll carrying a
+# write while still rate-limiting refreshes triggered by button presses.
+MONITOR_KEEPALIVE_INTERVAL = DEFAULT_SCAN_INTERVAL // 2
 CONNECT_SETTLE_DELAY = 4  # sleep after POST connect (background tasks only)
 CONNECT_CONFIRM_TIMEOUT = 300  # poll app_id after POST (Eletta; can exceed 180s on bad cloud days)
 CONNECT_CONFIRM_POLL_INTERVAL = 1  # seconds between app_id polls during confirm

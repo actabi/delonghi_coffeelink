@@ -877,6 +877,38 @@ def test_the_keepalive_comes_round_again_once_the_interval_lapses():
     assert len(_keepalives(client)) == 2
 
 
+def test_the_keepalive_interval_leaves_room_for_the_poll_that_carries_it():
+    """The guard must not be able to reject the very poll it rides on.
+
+    Equal to DEFAULT_SCAN_INTERVAL, `now - last < INTERVAL` is a coin flip: the
+    keepalive is stamped a few hundred ms into a poll, so the *next* scheduled
+    poll lands a hair under one interval later and is skipped.
+    """
+    assert const.MONITOR_KEEPALIVE_INTERVAL < const.DEFAULT_SCAN_INTERVAL
+
+
+def test_a_poll_one_scan_interval_later_still_writes_the_keepalive():
+    """The regression itself: successive writes were +61/+30/+31/+60 s, not +30.
+
+    The gap here is a hair UNDER one scan interval, which is what a real polling
+    loop produces - and is exactly what the old `< DEFAULT_SCAN_INTERVAL` guard
+    rejected, deferring the write a whole cycle and halving the status
+    resolution.
+    """
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+    asyncio.run(coord._async_update_data())
+    assert len(_keepalives(client)) == 1
+
+    coord._last_monitor_session_at -= const.DEFAULT_SCAN_INTERVAL - 0.05
+    asyncio.run(coord._async_update_data())
+
+    assert len(_keepalives(client)) == 2, (
+        "a poll one scan interval later must carry a keepalive; "
+        "it was being skipped every other cycle"
+    )
+
+
 def test_eletta_polls_do_not_get_the_soul_keepalive():
     """Eletta takes its session per command through app_device_connected; a
     periodic timestamp write there would fight the official app for it."""
