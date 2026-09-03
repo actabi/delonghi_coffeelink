@@ -23,16 +23,16 @@
   "entity": {
     "sensor": {
       "total_beverages": {
-        "name": "Drycker totalt"
+        "name": "Svarta drycker totalt"
       },
       "total_espresso": {
         "name": "Espresso totalt"
       },
       "total_milk_drinks": {
-        "name": "Mjölkdrycker totalt"
+        "name": "Kaffe- och mjölkdrycker totalt"
       },
       "total_water": {
-        "name": "Vattenuttag totalt"
+        "name": "Rena mjölkdrycker totalt"
       },
       "total_espresso_alt": {
         "name": "Espresso (alternativ) totalt"
@@ -162,6 +162,18 @@
       },
       "last_captured_command": {
         "name": "Senast fångade kommando"
+      },
+      "total_other_beverages": {
+        "name": "Övriga drycker totalt"
+      },
+      "total_cortado": {
+        "name": "Cortado totalt"
+      },
+      "total_long_black": {
+        "name": "Long Black totalt"
+      },
+      "total_mug_to_go": {
+        "name": "Mugg att ta med totalt"
       }
     },
     "button": {

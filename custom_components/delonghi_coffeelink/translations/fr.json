@@ -23,16 +23,16 @@
   "entity": {
     "sensor": {
       "total_beverages": {
-        "name": "Total boissons"
+        "name": "Total boissons noires"
       },
       "total_espresso": {
         "name": "Total espresso"
       },
       "total_milk_drinks": {
-        "name": "Total boissons lactées"
+        "name": "Total boissons café-lait"
       },
       "total_water": {
-        "name": "Total eau"
+        "name": "Total boissons lactées seules"
       },
       "total_espresso_alt": {
         "name": "Total espresso (alt)"
@@ -162,6 +162,18 @@
       },
       "last_captured_command": {
         "name": "Dernière commande capturée"
+      },
+      "total_other_beverages": {
+        "name": "Total autres boissons"
+      },
+      "total_cortado": {
+        "name": "Total cortado"
+      },
+      "total_long_black": {
+        "name": "Total long black"
+      },
+      "total_mug_to_go": {
+        "name": "Total mug to go"
       }
     },
     "button": {

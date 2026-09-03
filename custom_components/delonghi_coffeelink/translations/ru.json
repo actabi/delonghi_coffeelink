@@ -23,16 +23,16 @@
   "entity": {
     "sensor": {
       "total_beverages": {
-        "name": "Всего напитков"
+        "name": "Всего чёрных напитков"
       },
       "total_espresso": {
         "name": "Всего эспрессо"
       },
       "total_milk_drinks": {
-        "name": "Всего молочных напитков"
+        "name": "Всего кофейно-молочных напитков"
       },
       "total_water": {
-        "name": "Всего воды"
+        "name": "Всего чисто молочных напитков"
       },
       "total_espresso_alt": {
         "name": "Всего эспрессо (доп.)"
@@ -162,6 +162,18 @@
       },
       "last_captured_command": {
         "name": "Последняя захваченная команда"
+      },
+      "total_other_beverages": {
+        "name": "Всего прочих напитков"
+      },
+      "total_cortado": {
+        "name": "Всего кортадо"
+      },
+      "total_long_black": {
+        "name": "Всего лонг блэк"
+      },
+      "total_mug_to_go": {
+        "name": "Всего напитков Mug to Go"
       }
     },
     "button": {

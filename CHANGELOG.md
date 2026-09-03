@@ -9,7 +9,10 @@ properties this integration already polls every 30 seconds. Nothing here creates
 or removes an entity yet - it reads what is there, proves it intact, and stops
 the integration throwing away data it needs.
 
+The counters it exposes were also telling two lies, now corrected.
+
 ### Added
+
 - **The machine's own beverage catalogue is now parsed** (`catalog.py`). Every
   recipe datapoint is a self-describing blob, `d0 <len> <family> [<profile>]
   <bevid> <TLV...> <crc16>`, carrying the same CRC16 AUG-CCITT the command
@@ -30,7 +33,17 @@ the integration throwing away data it needs.
   It is read-only for now and costs no new request - roughly 4 ms of parsing,
   behind a fingerprint so it only re-runs when a recipe actually changes.
 
+- **`total_other_beverages` (`d702_tot_bev_other`)**, which was not exposed at
+  all. Without it the four buckets can never be reconciled against the machine's
+  own lifetime total.
+- **Counters for beverage ids 24, 25 and 26** - `total_cortado`,
+  `total_long_black`, `total_mug_to_go` (`d727_id24_cortado`,
+  `d728_id25_long_black`, `d729_id26_travel_mug`). These three drinks had buttons
+  in `BEVERAGES` and counters on the machine, but no sensor; every other id from
+  1 to 27 had one.
+
 ### Fixed
+
 - **A drink you saved on the machine could never be learned.** `learnable_
   beverage_id` accepted only the 21 hardcoded ids, so pressing "Perso 1" (ids
   `0xe6`-`0xeb`) or a bean-system drink (`0xc8`) in the official app had its
@@ -46,7 +59,37 @@ the integration throwing away data it needs.
   (`d039_1_rec_espresso` on the Soul, `d059_rec_1_espresso` on the Eletta, with
   the numbers shifted by 20 for the same drink).
 
+- **`Total Beverages` was not the total, and `Total Water` had nothing to do
+  with water.** The `d700_tot_bev_b` / `d701_tot_bev_bw` / `d703_tot_bev_w`
+  suffixes are **b**lack / **b**lack+**w**hite / **w**hite, not
+  "beverages" / "milk drinks" / "water". Verified by arithmetic against a live
+  PrimaDonna Soul rather than by reading the names:
+
+  | datapoint | was labelled | actually | proof on the reference machine |
+  |---|---|---|---|
+  | `d700_tot_bev_b` | Total Beverages | black drinks only | espresso 4 + coffee 4633 + doppio 1 = **4638 exact** |
+  | `d703_tot_bev_w` | Total Water | milk-only drinks | hot_milk **24 = 24 exact** |
+  | `d701_tot_bev_bw` | Total Milk Drinks | coffee + milk | 248 |
+
+  So `Total Beverages` under-reported that machine's lifetime by ~6 %: the real
+  figure is `4638 + 248 + 24 + 7 = 4917`.
+
+  `entity_id`s are deliberately **unchanged** - `sensor.…_total_water` keeps its
+  slug while displaying "Total Milk-Only Beverages". Renaming would break every
+  existing history, statistic and automation for no functional gain.
+
+### Changed
+
+- Documented, and pinned with a test, that `COUNTER_SENSORS` matches datapoints
+  by **exact full name**. d-numbers are not stable across models: the six
+  `mug`/`iced`/`cold brew` entries name numbers that on a PrimaDonna Soul carry
+  `d731_pregr_coff_cnt`, `d732_taste_b_bw`, `d735_b_water_qty`,
+  `d736_bw_coff_water_qty`, `d737_bw_milk_time_qty` and
+  `d738_espressi_water_qty`. Exact matching is the only reason none of them is
+  published under a confident, wrong label.
+
 ### Security
+
 - **The recipe dump no longer publishes the machine's serial number.** The
   machine wraps its serial (`d270`), its settings PIN (`d280`), the monitor blob
   and the command-response channel in the *same* `0xd0` envelope as its recipes,
@@ -57,6 +100,7 @@ the integration throwing away data it needs.
   count. The old `_rec_` filter never reached any of them.
 
 ### Notes
+
 - Nothing derived here is asserted beyond what the bytes support. A blob that
   fails any gate is *unreadable*, never *absent*; a TLV walk with a leftover byte
   is refused whole rather than half-parsed; `off_default` is `None` - not `False`
