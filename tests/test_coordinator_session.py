@@ -816,3 +816,161 @@ def test_the_last_connected_sensor_is_registered_on_every_machine():
     assert "entities.append(DelonghiLastConnectedSensor(coord))" in source
     assert 'super().__init__(coord, "last_connected", "mdi:clock-outline")' in source
     assert "self.coordinator.device.connected_at" in source
+
+
+# --- machine beverage catalogue (catalog.py, wired into the poll) ------------
+
+catalog = _load("catalog", "catalog.py")
+
+
+def _blob(family: bytes, payload: bytes) -> str:
+    """A well-formed machine blob: d0 <len> <family> <payload> <crc16>."""
+    body = family + payload
+    frame = bytes([const.CMD_RESPONSE_PREFIX, len(body) + 3]) + body
+    frame += cb.crc16_aug_ccitt(frame).to_bytes(2, "big")
+    return base64.b64encode(frame).decode("ascii")
+
+
+#: A machine declaring one custom slot (0xe6) with a per-profile recipe for it.
+SLOT_PROPS = {
+    "d028_rec_custom_1": {
+        "value": _blob(
+            catalog.FAMILY_DESCRIPTOR,
+            bytes([0xE6, catalog.TAG_COFFEE_ML, 0, 20, 0, 80, 0, 120]),
+        )
+    },
+    "d200_1_cstm_recipe_01": {
+        "value": _blob(
+            catalog.FAMILY_PROFILE_RECIPE,
+            bytes([1, 0xE6, catalog.TAG_COFFEE_ML, 0x00, 0x50, catalog.TAG_INTENSITY, 3]),
+        )
+    },
+}
+
+
+def _slot_frame(bev_id: int = 0xE6) -> str:
+    """A frame the *app* would send for a saved recipe: its own recipe bytes.
+
+    Not ``build_beverage_command`` defaults - those are bytes this integration
+    could have produced itself, which the sniffer refuses to learn on purpose
+    (it would replace the "teach me from the app" prompt with a frame the
+    machine ignores).
+    """
+    return cb.encode_command(
+        cb.build_eletta_beverage_command(bev_id, 0x03, bytes.fromhex("01 00 50 02 03"))
+    )
+
+
+def test_a_poll_builds_the_catalogue_from_the_properties_it_already_has():
+    """No extra request: discovery is a pure function of the poll's own result."""
+    client = _PollingClient(props=dict(SLOT_PROPS))
+    coord = _coord("DL-millcore", client=client)
+    assert coord.catalog is None
+
+    asyncio.run(coord._async_update_data())
+
+    assert coord.catalog is not None
+    assert 0xE6 in coord.catalog["beverages"]
+    assert coord.catalog["beverages"][0xE6]["defined"] is True
+    assert client.writes == [], "reading the catalogue must never write to the machine"
+
+
+def test_an_unchanged_poll_does_not_rebuild_the_catalogue():
+    """The fingerprint is what keeps the parse off the polls where nothing moved."""
+    client = _PollingClient(props=dict(SLOT_PROPS))
+    coord = _coord("DL-millcore", client=client)
+    asyncio.run(coord._async_update_data())
+    first = coord.catalog
+
+    asyncio.run(coord._async_update_data())
+    assert coord.catalog is first, "same bytes must not re-parse"
+
+    # A recipe edited on the machine must be picked up, though - a cache that
+    # cannot see a change is the failure mode this project keeps being bitten by.
+    client.props = dict(SLOT_PROPS)
+    client.props["d200_1_cstm_recipe_01"] = {
+        "value": _blob(
+            catalog.FAMILY_PROFILE_RECIPE,
+            bytes([1, 0xE6, catalog.TAG_COFFEE_ML, 0x00, 0x64, catalog.TAG_INTENSITY, 3]),
+        )
+    }
+    asyncio.run(coord._async_update_data())
+    assert coord.catalog is not first
+    assert coord.catalog["beverages"][0xE6]["profiles"][1][catalog.TAG_COFFEE_ML] == 0x64
+
+
+def test_a_poll_with_no_readable_blobs_keeps_the_catalogue_it_had():
+    """A blank poll must never look like a machine that lost its recipes."""
+    client = _PollingClient(props=dict(SLOT_PROPS))
+    coord = _coord("DL-millcore", client=client)
+    asyncio.run(coord._async_update_data())
+    known = coord.catalog
+
+    client.props = {"software_version": {"value": "Millcore_demo 2.0.0"}}
+    asyncio.run(coord._async_update_data())
+    assert coord.catalog is known
+
+
+def test_a_broken_catalogue_never_breaks_the_poll(monkeypatch):
+    """Diagnostic-grade, like the monitor decode: the poll must still return."""
+    client = _PollingClient(props=dict(SLOT_PROPS))
+    coord = _coord("DL-millcore", client=client)
+    monkeypatch.setattr(
+        coordinator, "build_catalog", lambda props: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    props = asyncio.run(coord._async_update_data())
+    assert props == SLOT_PROPS
+    assert coord.catalog is None
+
+
+def test_a_saved_recipe_frame_is_learned_because_the_machine_declares_it():
+    """The bug: pressing "Perso 1" in the official app had its frame discarded.
+
+    0xe6 is not in the hardcoded beverage list, so the only bytes that could
+    ever reproduce that drink were dropped in silence. The catalogue built from
+    the same poll is what makes the frame learnable.
+    """
+    frame = _slot_frame()
+    coord = _coord("DL-striker-cb")
+    _capture(coord, frame)
+    assert coord.learned_start_frames == {}, "without a catalogue, still dropped"
+
+    coord = _coord("DL-striker-cb")
+    coord.catalog = catalog.build_catalog(SLOT_PROPS)
+    _capture(coord, frame)
+    assert coord.learned_start_frames == {0xE6: frame}
+    assert coord._store.saves == 1, "and it is persisted, so it survives a restart"
+
+
+def test_the_catalogue_is_built_before_the_frame_is_sniffed():
+    """Ordering matters: a slot brewed on this very poll must be learnable now.
+
+    If _update_catalog ran after _sniff_app_traffic, the first press of a saved
+    recipe would always be lost and only the second would stick.
+    """
+    frame = _slot_frame()
+    # Poll 1: the channel is seen for the first time (never a capture, by
+    # design) and the machine has not published the slot yet.
+    client = _PollingClient(
+        props={"app_data_request": {"value": "AA==", "data_updated_at": "t0"}}
+    )
+    coord = _coord("DL-striker-cb", client=client)
+    coord.command_property = "app_data_request"
+    asyncio.run(coord._async_update_data())
+    assert coord.catalog is None
+
+    # Poll 2 brings the slot declaration and the frame together. Build the
+    # catalogue after sniffing and this first press is lost.
+    client.props = dict(SLOT_PROPS)
+    client.props["app_data_request"] = {"value": frame, "data_updated_at": "t1"}
+    asyncio.run(coord._async_update_data())
+    assert coord.learned_start_frames == {0xE6: frame}
+
+
+def test_an_id_no_one_declares_is_still_refused():
+    """Widening the gate must not turn it into no gate at all."""
+    frame = _slot_frame(bev_id=0x7F)
+    coord = _coord("DL-striker-cb")
+    coord.catalog = catalog.build_catalog(SLOT_PROPS)
+    _capture(coord, frame)
+    assert coord.learned_start_frames == {}

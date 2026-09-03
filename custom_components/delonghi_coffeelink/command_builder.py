@@ -16,10 +16,12 @@ from .const import (
     CRC_INIT,
     CRC_POLY,
     DEFAULT_RECIPE_PARAMS,
+    DUMPABLE_BLOB_FAMILIES,
     ELETTA_RECIPE_TRAILER,
     POWER_SESSION_REFRESH_PARAMS,
     POWER_STANDBY_PARAMS,
     POWER_WAKE_PARAMS,
+    TEXT_BLOB_FAMILIES,
 )
 
 _BEV_NAMES = {bev_id: display for bev_id, _key, display, _icon in BEVERAGES}
@@ -146,22 +148,79 @@ def deserialize_learned_frames(
     return _section("start"), _section("stop"), wake
 
 
+def _dumpable_blob(value: object) -> bytes | None:
+    """Decoded bytes of a *recipe-bearing* machine blob, else ``None``.
+
+    Two filters, and the second one matters as much as the first. The ``0xd0``
+    prefix alone is far too wide: the machine uses the same envelope for its
+    serial number (``d270``, family ``a10f``), its settings PIN (``d280``,
+    family ``950f``), the monitor blob and the command-response channel. This
+    dump is the block the README tells people to paste into a public GitHub
+    issue, so only the six families the catalogue actually understands are
+    rendered - see ``catalog.FAMILY_LABELS``.
+
+    Tolerates a dump-truncated base64 value (not a multiple of 4 characters) by
+    keeping the largest complete quantum, so a cut blob is still recognised
+    instead of silently dropping out of the diagnostic.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    clean = "".join(value.split())
+    try:
+        raw = base64.b64decode(clean[: len(clean) // 4 * 4], validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    if len(raw) < 4 or raw[0] != CMD_RESPONSE_PREFIX:
+        return None
+    return raw if bytes(raw[2:4]) in DUMPABLE_BLOB_FAMILIES else None
+
+
+def _render_blob(name: str, raw: bytes) -> str:
+    """One dump line for a blob, with any user-entered text redacted.
+
+    The three name families carry text the household typed in - profile names
+    are first names on a real machine. Their structure is worth dumping (header,
+    slot indices, length); their content is not, and it is never needed to
+    understand a recipe.
+    """
+    family = bytes(raw[2:4])
+    if family in TEXT_BLOB_FAMILIES:
+        header, text = raw[:6], raw[6:]
+        return f"{name} [family {family.hex()}] = {header.hex(' ')} <{len(text)} bytes of name redacted>"
+    return f"{name} [family {family.hex()}] = {raw.hex(' ')}"
+
+
 def recipe_dump_lines(props: dict) -> list[str]:
     """Render the machine's stored recipe datapoints for a read-only diagnostic.
 
-    Returns ``name = <hex>`` lines for every property whose name contains
-    ``_rec_`` (the per-beverage recipe definitions the machine stores, e.g.
-    ``d059_rec_1_espresso``) plus the active-profile indicator. Base64 blobs are
-    decoded to hex; other values are shown as-is. Sends nothing to the machine -
-    used to confirm whether a stored recipe maps to the beverage command's
-    variable recipe block (the path to drop the "teach from the app" step).
+    Selection is by *blob family*, not by property name. The name-based filter
+    this replaced (``"_rec_" in name``) missed every custom and bean-system
+    recipe - on the reference PrimaDonna Soul it selected 132 of the 168
+    recipe-bearing datapoints (plus the 5 priority lists), dropping the 30
+    ``cstm_recipe`` blobs, the 5 ``bs_recipe`` blobs and ``d022_beansystem_1``,
+    which are precisely the entries a catalogue discovery exists to find. Names
+    are also model-specific (Soul ``d039_1_rec_espresso`` vs Eletta
+    ``d059_rec_1_espresso``, numbers shifted by 20 for the same drink) while the
+    blob header is identical on both.
+
+    What is dumped: the six recipe-bearing families, with the user-entered text
+    of the three name families redacted to a byte count. What is deliberately
+    NOT dumped, even though it wears the same ``0xd0`` envelope: the serial
+    number, the settings PIN, the monitor blob and the response channel. The
+    legacy ``_rec_`` names and the active-profile indicator are still rendered
+    as-is, for continuity and for any model whose recipes are not blob-shaped.
+    Sends nothing to the machine.
     """
     lines: list[str] = []
     for name in sorted(props):
-        if "_rec_" not in name and name != "d286_mach_sett_profile":
-            continue
         prop = props.get(name)
         value = prop.get("value") if isinstance(prop, dict) else prop
+        raw = _dumpable_blob(value)
+        if raw is None and "_rec_" not in name and name != "d286_mach_sett_profile":
+            continue
+        if raw is not None:
+            lines.append(_render_blob(name, raw))
+            continue
         if isinstance(value, str) and value.strip():
             try:
                 rendered = base64.b64decode("".join(value.split()), validate=True).hex(" ")
@@ -355,12 +414,19 @@ def app_id_from_signature(signature: bytes | None) -> int | None:
     return int.from_bytes(signature, "big", signed=True)
 
 
-def learnable_beverage_id(decoded: dict) -> int | None:
+def learnable_beverage_id(decoded: dict, known_ids: Iterable[int] | None = None) -> int | None:
     """Beverage id to learn from a captured app frame, or ``None`` to skip it.
 
     A frame is worth learning when it is a beverage command whose CRC checks out
-    and whose beverage id is one this integration exposes - nothing else. The
-    frame *dialect* is deliberately NOT part of the decision: on a
+    and whose beverage id is one the *machine* has, not merely one this
+    integration hardcodes. ``known_ids`` widens the gate with the ids discovered
+    from the machine's own datapoints (see ``catalog.catalog_beverage_ids``):
+    without it, a user who brews a saved recipe such as "Perso 1" (ids
+    ``0xe6``-``0xeb``) or a bean-system drink (``0xc8``) from the official app
+    has the captured frame silently discarded, and the integration can then
+    never reproduce that drink.
+
+    The frame *dialect* is deliberately NOT part of the decision: on a
     ``learns_from_app`` model every command the app sends is by definition the
     dialect that machine speaks, and the previous `style == "eletta"` gate
     silently dropped every beverage whose recipe happened not to end with the
@@ -379,7 +445,9 @@ def learnable_beverage_id(decoded: dict) -> int | None:
         bev_id = int(decoded.get("beverage_id", ""), 16)
     except (ValueError, TypeError):
         return None
-    return bev_id if bev_id in _BEV_NAMES else None
+    if bev_id in _BEV_NAMES:
+        return bev_id
+    return bev_id if known_ids is not None and bev_id in set(known_ids) else None
 
 
 def is_wake_power_frame(decoded: dict) -> bool:

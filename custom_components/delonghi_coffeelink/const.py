@@ -60,6 +60,35 @@ CMD_RESPONSE_PREFIX = 0xd0  # Machine -> app
 CMD_LENGTH = 0x0d       # 13 bytes payload
 CMD_FAMILY_BREW = bytes([0x83, 0xf0])  # Brew beverage command family
 
+# Machine->app blob families. The machine wraps almost everything it stores in
+# the same `d0 <len> <family 2B> ... <crc16>` envelope, so the family bytes -
+# never the property name, which differs per model - say what a datapoint is.
+# See catalog.py for the grammar.
+BLOB_FAMILY_DESCRIPTOR = bytes([0xb0, 0xf0])       # factory min/default/max
+BLOB_FAMILY_PROFILE_RECIPE = bytes([0xa6, 0xf0])   # per-profile current values
+BLOB_FAMILY_MENU = bytes([0xa8, 0xf0])             # the machine's ordered menu
+BLOB_FAMILY_PROFILE_NAMES = bytes([0xa4, 0xf0])
+BLOB_FAMILY_CUSTOM_NAMES = bytes([0xaa, 0xf0])
+BLOB_FAMILY_BEAN_NAMES = bytes([0xba, 0xf0])
+
+# The families that carry text the household typed in. Their structure is safe
+# to log; their content is a first name.
+TEXT_BLOB_FAMILIES = frozenset(
+    {BLOB_FAMILY_PROFILE_NAMES, BLOB_FAMILY_CUSTOM_NAMES, BLOB_FAMILY_BEAN_NAMES}
+)
+# The families the recipe diagnostic may render. Deliberately NOT the whole
+# 0xd0 envelope: the serial number (family a1 0f), the settings PIN (95 0f),
+# the monitor blob (75 0f) and the response channel (a9 f0) wear it too, and
+# that dump is meant to be pasted into public issue reports.
+DUMPABLE_BLOB_FAMILIES = frozenset(
+    {
+        BLOB_FAMILY_DESCRIPTOR,
+        BLOB_FAMILY_PROFILE_RECIPE,
+        BLOB_FAMILY_MENU,
+        *TEXT_BLOB_FAMILIES,
+    }
+)
+
 # Eletta Explore (oem_model=DL-striker-cb) beverage frames carry a variable
 # length recipe block terminated by this 2-byte trailer, then the CRC. The Soul
 # (DL-millcore) frame has no trailer (fixed 6-byte recipe). See command_builder.
@@ -207,9 +236,8 @@ COUNTER_SENSORS = [
 MEASUREMENT_WATER_LITERS = "water_liters"
 
 # De'Longhi machines report water volumes in millilitres, while Home Assistant's
-# water device class works in litres. Sources: DeLonghi's own statistics sheet
-# is in litres, sk7n4k3d/delonghi-ha applies scale=0.001 to the same datapoints,
-# and PyDeLonghiAPI derives lifetime litres as d553 / 1000 (see issue #19).
+# water device class works in litres. Confirmed against De'Longhi's own
+# statistics sheet, which is denominated in litres (see issue #19).
 COUNTER_MEASUREMENTS: dict[str, str] = {
     "water_total_quantity": MEASUREMENT_WATER_LITERS,
     "water_filter_quantity": MEASUREMENT_WATER_LITERS,
