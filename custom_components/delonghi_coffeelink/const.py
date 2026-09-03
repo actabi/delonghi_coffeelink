@@ -236,9 +236,8 @@ COUNTER_SENSORS = [
 MEASUREMENT_WATER_LITERS = "water_liters"
 
 # De'Longhi machines report water volumes in millilitres, while Home Assistant's
-# water device class works in litres. Sources: DeLonghi's own statistics sheet
-# is in litres, sk7n4k3d/delonghi-ha applies scale=0.001 to the same datapoints,
-# and PyDeLonghiAPI derives lifetime litres as d553 / 1000 (see issue #19).
+# water device class works in litres. Confirmed against De'Longhi's own
+# statistics sheet, which is denominated in litres (see issue #19).
 COUNTER_MEASUREMENTS: dict[str, str] = {
     "water_total_quantity": MEASUREMENT_WATER_LITERS,
     "water_filter_quantity": MEASUREMENT_WATER_LITERS,

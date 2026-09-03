@@ -160,10 +160,9 @@ cloud accepted with `200 OK` and never delivered.
 ### Changed
 - **BREAKING for statistics** - `Water Total Quantity` and `Water Filter
   Quantity` now report **litres** instead of a unitless count. De'Longhi
-  machines publish these counters in millilitres (independently confirmed by
-  De'Longhi's own statistics sheet, by `sk7n4k3d/delonghi-ha` which applies
-  `scale=0.001` to the same datapoints, and by `PyDeLonghiAPI` which derives
-  lifetime litres as `d553 / 1000`), and Home Assistant's water device class
+  machines publish these counters in millilitres (confirmed against De'Longhi's
+  own statistics sheet, which is denominated in litres), and Home Assistant's
+  water device class
   works in litres. Existing installations have long-term statistics recorded
   without a unit, so Home Assistant will raise a "units changed" repair for
   these two entities; accepting it keeps history consistent with the new unit.
