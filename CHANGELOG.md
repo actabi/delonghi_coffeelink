@@ -4,7 +4,61 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+The machine has been publishing its own beverage catalogue all along, in the
+properties this integration already polls every 30 seconds. Nothing here creates
+or removes an entity yet - it reads what is there, proves it intact, and stops
+the integration throwing away data it needs.
+
+The counters it exposes were also telling two lies, now corrected.
+
+### Added
+
+- **The machine's own beverage catalogue is now parsed** (`catalog.py`). Every
+  recipe datapoint is a self-describing blob, `d0 <len> <family> [<profile>]
+  <bevid> <TLV...> <crc16>`, carrying the same CRC16 AUG-CCITT the command
+  builder already uses - so it can be *proved* intact before anything is derived
+  from it. Measured on the reference PrimaDonna Soul (312 properties): 194 blobs,
+  163 complete, **163/163 checksums valid**, and one TLV rule (tags `0x01`,
+  `0x09`, `0x0f` are 16-bit, everything else 8-bit) consumes **140/140** recipe
+  payloads with zero leftover bytes.
+
+  What the machine turns out to publish: which drinks it *actually* offers and in
+  what order, per profile (18 on the reference machine - the integration ships 21
+  buttons for it, so three are fiction); the current quantity of every parameter
+  of every drink on every profile; the **editable min/default/max ranges** from
+  the factory descriptors (hot water 20/250/420 ml, hot milk 50/360/1080); the
+  six saved-recipe slots and the bean-system drink, none of which the hardcoded
+  beverage list has ever had; and the user-entered names.
+
+  It is read-only for now and costs no new request - roughly 4 ms of parsing,
+  behind a fingerprint so it only re-runs when a recipe actually changes.
+
+- **`total_other_beverages` (`d702_tot_bev_other`)**, which was not exposed at
+  all. Without it the four buckets can never be reconciled against the machine's
+  own lifetime total.
+- **Counters for beverage ids 24, 25 and 26** - `total_cortado`,
+  `total_long_black`, `total_mug_to_go` (`d727_id24_cortado`,
+  `d728_id25_long_black`, `d729_id26_travel_mug`). These three drinks had buttons
+  in `BEVERAGES` and counters on the machine, but no sensor; every other id from
+  1 to 27 had one.
+
 ### Fixed
+
+- **A drink you saved on the machine could never be learned.** `learnable_
+  beverage_id` accepted only the 21 hardcoded ids, so pressing "Perso 1" (ids
+  `0xe6`-`0xeb`) or a bean-system drink (`0xc8`) in the official app had its
+  captured frame **discarded in silence** - and on a learn-and-replay model that
+  frame is the only way the integration could ever reproduce that drink. The gate
+  now also accepts the ids the machine itself declares. The checksum rule is
+  unchanged: a corrupt frame is still never learned.
+- **The recipe dump missed exactly the recipes worth dumping.** It selected
+  properties by the substring `_rec_`, which on the reference machine caught 137
+  datapoints and skipped all 30 saved-recipe blobs, all 5 bean-system recipes and
+  `d022_beansystem_1`. It now selects by blob family, so the diagnostic surfaces
+  all 194 - and it no longer depends on property names, which differ per model
+  (`d039_1_rec_espresso` on the Soul, `d059_rec_1_espresso` on the Eletta, with
+  the numbers shifted by 20 for the same drink).
+
 - **`Total Beverages` was not the total, and `Total Water` had nothing to do
   with water.** The `d700_tot_bev_b` / `d701_tot_bev_bw` / `d703_tot_bev_w`
   suffixes are **b**lack / **b**lack+**w**hite / **w**hite, not
@@ -24,17 +78,8 @@ All notable changes to this project will be documented in this file.
   slug while displaying "Total Milk-Only Beverages". Renaming would break every
   existing history, statistic and automation for no functional gain.
 
-### Added
-- **`total_other_beverages` (`d702_tot_bev_other`)**, which was not exposed at
-  all. Without it the four buckets can never be reconciled against the machine's
-  own lifetime total.
-- **Counters for beverage ids 24, 25 and 26** - `total_cortado`,
-  `total_long_black`, `total_mug_to_go` (`d727_id24_cortado`,
-  `d728_id25_long_black`, `d729_id26_travel_mug`). These three drinks had buttons
-  in `BEVERAGES` and counters on the machine, but no sensor; every other id from
-  1 to 27 had one.
-
 ### Changed
+
 - Documented, and pinned with a test, that `COUNTER_SENSORS` matches datapoints
   by **exact full name**. d-numbers are not stable across models: the six
   `mug`/`iced`/`cold brew` entries name numbers that on a PrimaDonna Soul carry
@@ -42,6 +87,30 @@ All notable changes to this project will be documented in this file.
   `d736_bw_coff_water_qty`, `d737_bw_milk_time_qty` and
   `d738_espressi_water_qty`. Exact matching is the only reason none of them is
   published under a confident, wrong label.
+
+### Security
+
+- **The recipe dump no longer publishes the machine's serial number.** The
+  machine wraps its serial (`d270`), its settings PIN (`d280`), the monitor blob
+  and the command-response channel in the *same* `0xd0` envelope as its recipes,
+  so selecting on that prefix alone would have put a serial in every bug report -
+  and the README asks users to paste this block into public GitHub issues. Only
+  the six catalogue families are rendered now, and the user-entered text of the
+  three name families (profile names are first names) is replaced by a byte
+  count. The old `_rec_` filter never reached any of them.
+
+### Notes
+
+- Nothing derived here is asserted beyond what the bytes support. A blob that
+  fails any gate is *unreadable*, never *absent*; a TLV walk with a leftover byte
+  is refused whole rather than half-parsed; `off_default` is `None` - not `False`
+  - wherever the factory descriptor is truncated, and cross-profile disagreement
+  is reported separately as the weaker signal it is.
+- `tests/fixtures/soul_properties.json` is a real 312-property dump, anonymised:
+  the serial, the Wi-Fi MAC (three plain integers - a scan that only reads the
+  base64 strings walks straight past it) and every user-entered name were
+  overwritten, with checksums recomputed. `fixtures/anonymise_dump.py` reproduces
+  it and a test fails the day the fixture is refreshed without re-anonymising.
 
 ## [0.3.19] - 2026-08-22
 
@@ -135,10 +204,9 @@ cloud accepted with `200 OK` and never delivered.
 ### Changed
 - **BREAKING for statistics** - `Water Total Quantity` and `Water Filter
   Quantity` now report **litres** instead of a unitless count. De'Longhi
-  machines publish these counters in millilitres (independently confirmed by
-  De'Longhi's own statistics sheet, by `sk7n4k3d/delonghi-ha` which applies
-  `scale=0.001` to the same datapoints, and by `PyDeLonghiAPI` which derives
-  lifetime litres as `d553 / 1000`), and Home Assistant's water device class
+  machines publish these counters in millilitres (confirmed against De'Longhi's
+  own statistics sheet, which is denominated in litres), and Home Assistant's
+  water device class
   works in litres. Existing installations have long-term statistics recorded
   without a unit, so Home Assistant will raise a "units changed" repair for
   these two entities; accepting it keeps history consistent with the new unit.
