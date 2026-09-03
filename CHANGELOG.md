@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.3.20] - 2026-09-04
 
 The machine has been publishing its own beverage catalogue all along, in the
 properties this integration already polls every 30 seconds. Nothing here creates
