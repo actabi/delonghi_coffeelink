@@ -66,7 +66,7 @@ CMD_FAMILY_BREW = bytes([0x83, 0xf0])  # Brew beverage command family
 # See catalog.py for the grammar.
 BLOB_FAMILY_DESCRIPTOR = bytes([0xb0, 0xf0])       # factory min/default/max
 BLOB_FAMILY_PROFILE_RECIPE = bytes([0xa6, 0xf0])   # per-profile current values
-BLOB_FAMILY_MENU = bytes([0xa8, 0xf0])             # the machine's ordered menu
+BLOB_FAMILY_PRIORITY = bytes([0xa8, 0xf0])         # per-profile ordered short list
 BLOB_FAMILY_PROFILE_NAMES = bytes([0xa4, 0xf0])
 BLOB_FAMILY_CUSTOM_NAMES = bytes([0xaa, 0xf0])
 BLOB_FAMILY_BEAN_NAMES = bytes([0xba, 0xf0])
@@ -84,7 +84,7 @@ DUMPABLE_BLOB_FAMILIES = frozenset(
     {
         BLOB_FAMILY_DESCRIPTOR,
         BLOB_FAMILY_PROFILE_RECIPE,
-        BLOB_FAMILY_MENU,
+        BLOB_FAMILY_PRIORITY,
         *TEXT_BLOB_FAMILIES,
     }
 )

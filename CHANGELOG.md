@@ -45,6 +45,31 @@ All notable changes to this project will be documented in this file.
   blob - and redacts the user-entered text of the three name families, which is
   why those blobs are absent rather than scrubbed.
 
+## [Unreleased]
+
+### Fixed
+- **Correction to a claim shipped in 0.3.20: the `a8f0` lists are not the
+  machine's menu.** The release notes said the reference machine "actually
+  offers" 18 drinks and that three of the buttons shipped for it were therefore
+  fiction. That reading was wrong, and the machine's owner is what disproved it:
+  he can see Doppio+ on the machine's own screen, and its lifetime counter reads
+  **823 brews** - yet it appears in none of the five lists in one dump and in
+  only two of them in another.
+
+  What the lists actually are: a per-profile ordered *short list* of fixed size.
+  Every profile holds exactly 18 entries in every dump, and the contents move -
+  between two dumps of the same machine, profiles 1, 4 and 5 dropped Doppio+ and
+  picked up the bean-system drink, while 2 and 3 kept Doppio+ and never had the
+  bean system. Fixed size with moving contents is a carousel, not a capability
+  list.
+
+  So `on_menu` is now `in_priority_list`, `menu` is `priority_lists`,
+  `menu_position` is `priority_position`, and the docstrings say plainly that
+  membership proves nothing in either direction. No entity or datapoint changes:
+  nothing consumed these fields yet, which is the only reason the wrong reading
+  cost documentation rather than hidden buttons. A test pins the drift between
+  the two dumps so the convenient interpretation cannot come back.
+
 ## [0.3.20] - 2026-09-04
 
 The machine has been publishing its own beverage catalogue all along, in the
@@ -65,9 +90,9 @@ The counters it exposes were also telling two lies, now corrected.
   `0x09`, `0x0f` are 16-bit, everything else 8-bit) consumes **140/140** recipe
   payloads with zero leftover bytes.
 
-  What the machine turns out to publish: which drinks it *actually* offers and in
-  what order, per profile (18 on the reference machine - the integration ships 21
-  buttons for it, so three are fiction); the current quantity of every parameter
+  What the machine turns out to publish: each profile's ordered short list of 18
+  entries (**see the Unreleased correction above - this is a selection, not the
+  set of drinks the machine can make**); the current quantity of every parameter
   of every drink on every profile; the **editable min/default/max ranges** from
   the factory descriptors (hot water 20/250/420 ml, hot milk 50/360/1080); the
   six saved-recipe slots and the bean-system drink, none of which the hardcoded
