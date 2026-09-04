@@ -4,9 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **`_slot_is_defined` no longer checks the `0xff` intensity marker.** A slot
+  that dispenses nothing has not been programmed, and that was already the whole
+  test: every unprogrammed slot on the reference machine reads zero for coffee,
+  milk and water, so the marker decided nothing. Removing it also removes a
+  claim about what `0xff` means that no machine has had to confirm - and were a
+  slot ever to carry a real volume alongside it, "it pours something, so it is
+  programmed" is the answer we would want anyway. Found by mutating the guard
+  and watching the suite stay green.
+
 ### Added
-- **A second test fixture: the same reference machine, dumped without the
-  50-character cut** (`tests/fixtures/soul_recipes_full.json`). The truncation
+- **A second test fixture: the same reference machine, read whole**
+  (`tests/fixtures/soul_recipes_full.json`), straight off the running
+  integration on v0.3.20. The truncation
   was never the machine's doing - it came from the dump script, and it was
   hiding exactly the data worth having: 20 of the 28 factory descriptors carry
   their min/default/max ranges past that cut. Readable parameter schemas go from
@@ -16,19 +27,23 @@ All notable changes to this project will be documented in this file.
   against the truncated dump, and read all 137 blobs with **137/137 checksums
   valid, nothing truncated, nothing left over by the TLV grammar**.
 
-  What that unlocks: whether a drink has been customised stops being unknown.
-  Espresso reads 48 ml on three of five profiles against a factory default of
-  40, so `off_default` now says so instead of `None`. Doppio sits exactly on its
-  factory 120 ml, and the tests pin both directions.
+  What that unlocks: **nothing about this machine is unknown any more**. Whether
+  a drink has been customised stops being a shrug - espresso reads 48 ml on
+  three of five profiles against a factory default of 40, so `off_default` now
+  says so instead of `None`, while doppio sits exactly on its factory 120 ml.
+  Both directions are pinned. Because the dump now selects by blob family, the
+  fixture also reaches what the old `_rec_` name filter never did: the six
+  saved-recipe slots (read as unprogrammed from the machine's own values, not
+  guessed) and the bean-system drink `0xc8`, which no hardcoded beverage list
+  has ever carried and which turns out to declare coffee 30/40/60 ml.
 
-  The two fixtures are kept side by side on purpose and are complementary rather
-  than nested: the truncated one exercises a real failure shape the parser has
-  to survive, and it still holds the one descriptor this one lacks - the
-  bean-system `0xc8`, which the old `_rec_` name filter never selected. That
-  filter is what selecting by blob family replaced.
+  The truncated fixture is kept alongside it, and not out of sentiment: 31 of
+  its blobs are cut, which is a real shape the parser has to survive.
 
-  It needs no anonymisation, and a test enforces that rather than trusting it:
-  recipe blobs only, no serial, no MAC, no user-entered text.
+  Neither needs anonymisation, and tests enforce that rather than trusting it.
+  The dump renders recipe families only - no serial, no settings PIN, no monitor
+  blob - and redacts the user-entered text of the three name families, which is
+  why those blobs are absent rather than scrubbed.
 
 ## [0.3.20] - 2026-09-04
 

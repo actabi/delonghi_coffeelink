@@ -665,17 +665,21 @@ def test_blob_family_reads_the_family_without_a_full_decode(props: dict):
         assert catalog.blob_family(not_a_blob) is None
 
 
-# --- the same machine, dumped without the 50-character cut ------------------ #
+# --- the same machine, read whole ------------------------------------------- #
 #
 # fixtures/soul_properties.json is a full 312-property dump whose values the
 # dump tool truncated at 50 base64 characters, which is a real shape the parser
 # has to survive - 31 of its blobs are cut, including 20 of the 28 factory
-# descriptors. This second fixture is the same machine's recipe datapoints read
-# again with that cut removed: fewer properties, but every one of them whole.
+# descriptors. This second fixture is the same machine's catalogue read again
+# with that cut removed, straight off the running integration: fewer properties,
+# but every one of them whole, and it reaches the saved-recipe and bean-system
+# blobs the old `_rec_` name filter never selected.
 #
-# It needs no anonymisation and that is not an oversight: it carries recipe
-# blobs only, no serial, no MAC, no user-entered text. The test below enforces
-# it rather than trusting it.
+# It needs no anonymisation and that is not an oversight. The dump it came from
+# renders recipe families only - no serial, no settings PIN, no monitor blob -
+# and redacts the user-entered text of the three name families, which is why
+# those 11 blobs are absent here rather than anonymised. The test below enforces
+# the result rather than trusting it.
 
 FULL_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "soul_recipes_full.json"
 
@@ -691,38 +695,36 @@ def full_cat(full_props: dict) -> dict:
 
 
 def test_the_full_dump_parses_with_nothing_left_over(full_cat: dict):
-    """137 blobs, 137 checksums, nothing cut and nothing the grammar could not eat.
+    """173 blobs, 173 checksums, nothing cut and nothing the grammar could not eat.
 
     This is the parser's first run against bytes it was not written from: the
     truncated dump is what it was developed on, this one arrived afterwards.
     """
     stats = full_cat["stats"]
-    assert stats["blobs"] == 137
-    assert stats["crc_ok"] == 137
+    assert stats["blobs"] == 173
+    assert stats["crc_ok"] == 173
     assert stats["crc_failed"] == 0
     assert stats["truncated"] == 0
     assert stats["unparsed_payloads"] == 0
     assert stats["short_payloads"] == 0
 
 
-def test_removing_the_cut_turns_8_readable_schemas_into_27(cat: dict, full_cat: dict):
+def test_removing_the_cut_makes_every_schema_readable(cat: dict, full_cat: dict):
     """The truncation was hiding the machine's own parameter ranges.
 
     Same machine, same descriptors: 20 of the 28 were unreadable purely because
     the dump tool stopped at 50 base64 characters.
 
-    The two fixtures are complementary rather than nested, and the one id that
-    proves it is worth keeping: the bean-system descriptor `0xc8` is readable in
-    the truncated dump and absent from this one, because the dump that produced
-    it still selected properties by the `_rec_` substring, which never matched
-    `d022_beansystem_1`. That filter is what selecting by blob family replaced.
+    Every id the truncated dump could read is still readable here, and the set
+    is now complete: 28 of 28, including the bean-system descriptor `0xc8` that
+    the old `_rec_` name filter never even selected.
     """
     truncated_ranges = {i for i, item in cat["beverages"].items() if item["ranges"]}
     full_ranges = {i for i, item in full_cat["beverages"].items() if item["ranges"]}
     assert len(truncated_ranges) == 8
-    assert len(full_ranges) == 27
-    assert truncated_ranges - full_ranges == {0xC8}, "only the bean system, and only by name filter"
-    assert truncated_ranges - {0xC8} < full_ranges, "every truncated-dump range survives"
+    assert full_ranges == set(full_cat["beverages"]), "every declared id has its schema"
+    assert len(full_ranges) == 28
+    assert truncated_ranges < full_ranges, "nothing readable before became unreadable"
 
 
 def test_espresso_ranges_are_now_readable(full_cat: dict):
@@ -773,3 +775,38 @@ def test_the_recipe_fixture_needs_no_anonymisation(full_props: dict):
         catalog.FAMILY_PROFILE_RECIPE,
         catalog.FAMILY_MENU,
     }, "a text-bearing family would need the anonymiser"
+
+
+def test_nothing_about_this_machine_is_unknown_any_more(full_cat: dict):
+    """The whole point of reading the machine whole: no shrugging left.
+
+    Every declared drink has its factory schema, so `off_default` resolves to a
+    real answer for all of them. On the truncated dump 20 of the 28 had to say
+    `None`.
+    """
+    assert all(item["off_default"] is not None for item in full_cat["beverages"].values())
+    assert all(item["descriptor_truncated"] is False for item in full_cat["beverages"].values())
+
+
+def test_the_saved_recipe_slots_are_read_and_reported_empty(full_cat: dict):
+    """Six slots, five profiles each, none programmed on the reference machine.
+
+    These blobs are the ones the old `_rec_` name filter never selected, so they
+    could not be tested against real bytes until the dump learned to select by
+    family. `defined` is False here, not None: the machine's own unprogrammed
+    sentinel was read, not guessed.
+    """
+    custom = {i: item for i, item in full_cat["beverages"].items() if item["kind"] == "custom"}
+    assert set(custom) == set(catalog.CUSTOM_SLOT_IDS)
+    assert all(item["defined"] is False for item in custom.values())
+    assert all(len(item["profiles"]) == 5 for item in custom.values())
+
+
+def test_the_bean_system_drink_carries_a_real_schema(full_cat: dict):
+    """`0xc8` is brewable, has ranges, and is in no hardcoded beverage list."""
+    bean = full_cat["beverages"][0xC8]
+    assert bean["kind"] == "bean_system"
+    assert bean["ranges"][catalog.TAG_COFFEE_ML] == (30, 40, 60)
+    assert bean["ranges"][catalog.TAG_INTENSITY] == (1, 4, 5)
+    assert len(bean["profiles"]) == 5, "one per-profile recipe per profile"
+    assert bean["on_menu"] is None, "the menu blob does not enumerate it"
