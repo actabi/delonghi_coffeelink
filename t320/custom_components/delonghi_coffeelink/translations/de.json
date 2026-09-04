@@ -174,9 +174,6 @@
       },
       "total_mug_to_go": {
         "name": "Mug to Go gesamt"
-      },
-      "monitor_published": {
-        "name": "Status zuletzt gesendet"
       }
     },
     "button": {

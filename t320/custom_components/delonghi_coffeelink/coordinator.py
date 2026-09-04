@@ -6,7 +6,7 @@ import logging
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -52,7 +52,6 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     INTEGRATION_CLOUD_APP_ID,
-    MONITOR_MAX_AGE,
     MONITOR_PROPERTY_CANDIDATES,
     REACHABILITY_MAX_AGE,
     RECIPE_STORE_SAVE_DELAY,
@@ -140,10 +139,6 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Status sensor; which datapoint it comes from is resolved per model
         # (see MONITOR_PROPERTY_CANDIDATES). Empty dict until a blob parses.
         self.monitor: dict[str, Any] = {}
-        # When the machine last PUBLISHED that monitor blob, per Ayla's own
-        # `data_updated_at`. Not when we last read it: a successful poll of a
-        # fossilised datapoint is the failure this exists to catch.
-        self.monitor_updated_at: datetime | None = None
         # The machine's own beverage catalogue, parsed from the recipe datapoints
         # already present in every poll (see catalog.py). Read-only for now: it
         # widens the learn gate and feeds the diagnostic dump, and creates no
@@ -304,38 +299,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 self.monitor_property = name
             self.monitor = monitor
-            self.monitor_updated_at = self._published_at(props.get(name))
         except Exception:  # noqa: BLE001 - diagnostic must not break polling
             _LOGGER.debug("Monitor parse failed (non-fatal)", exc_info=True)
             self.monitor = {}
-
-    @staticmethod
-    def _published_at(prop: Any) -> datetime | None:
-        """Ayla's `data_updated_at` for one property, as an aware datetime."""
-        raw = prop.get("data_updated_at") if isinstance(prop, dict) else None
-        if not isinstance(raw, str) or not raw.strip():
-            return None
-        try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-
-    @property
-    def monitor_age(self) -> float | None:
-        """Seconds since the machine last published its monitor blob."""
-        if self.monitor_updated_at is None:
-            return None
-        return (datetime.now(timezone.utc) - self.monitor_updated_at).total_seconds()
-
-    @property
-    def monitor_is_stale(self) -> bool:
-        """True when the monitor datapoint is too old to be reported as current.
-
-        Fails OPEN: with no timestamp from the cloud there is no evidence of
-        silence, and inventing staleness would be its own kind of lie.
-        """
-        age = self.monitor_age
-        return age is not None and age > MONITOR_MAX_AGE
 
     def _detect_property(
         self,

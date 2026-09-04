@@ -121,23 +121,6 @@ POWER_SESSION_REFRESH_PARAMS = bytes([0x03, 0x02])
 # stale or truncated packet).
 MONITOR_PROPERTY_CANDIDATES = ["d302_monitor_machine", "d302_monitor"]
 
-# How old the monitor datapoint may get before Machine Status stops asserting it.
-#
-# Polling proves the INTEGRATION is alive, never that the DATA is. The machine
-# publishes its monitor blob only when prompted (issue #14), so a machine whose
-# cloud link has wedged keeps `connection_status: Online`, keeps every entity
-# available, and keeps Machine Status reporting whatever it last said - for days.
-# Observed on a PrimaDonna Soul: the module answered ICMP and Ayla reported it
-# connected, while of 311 datapoints the only two written in 44 h were the two
-# the integration writes itself. Machine Status read a confident `standby`
-# throughout, and the automations keyed on it simply never fired.
-#
-# Ayla timestamps every datapoint with `data_updated_at`; this is the age past
-# which that timestamp is treated as evidence of silence rather than of standby.
-# Generous on purpose - it must clear a poll, the retry budget and a tolerated
-# run of transient failures without ever flapping.
-MONITOR_MAX_AGE = 6 * DEFAULT_SCAN_INTERVAL  # seconds
-
 # How long the cloud's connection_status is trusted enough to REFUSE a command.
 # The status only refreshes on a successful poll, so a cloud outage or a broken
 # poll loop freezes it: past this age the preflight fails open rather than

@@ -2,35 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
-### Fixed
-- **Machine Status no longer reports a value the machine stopped publishing.**
-  Polling proves the *integration* is alive, never that the *data* is. Because
-  the machine only publishes its monitor blob when prompted (#14), a machine
-  whose cloud link has wedged keeps `connection_status: Online`, keeps every
-  entity available, keeps every poll succeeding - and keeps Machine Status
-  reporting whatever it last said, for days.
-
-  Observed on the reference PrimaDonna Soul: the module answered ICMP, the
-  router saw it on the network, Ayla reported it connected - and of its **311
-  datapoints the only two written in 44 hours were the two the integration
-  writes itself**. Machine Status read a confident `standby` throughout. The
-  automations keyed on it never fired, and nothing anywhere said why.
-
-  Ayla timestamps every datapoint with `data_updated_at`. The integration
-  received it on every poll and discarded it. It is now kept, and past
-  `MONITOR_MAX_AGE` (6 polling intervals) Machine Status reports `unknown`
-  instead of asserting a fossil. Staleness **fails open**: with no timestamp
-  from the cloud there is no evidence of silence, and inventing it would be its
-  own kind of lie.
-
-### Added
-- **`Status Last Published`** (diagnostic, timestamp): when the machine last
-  published its status, as opposed to when the integration last read it. This is
-  the one value that separates "the machine is resting" from "the machine has
-  gone quiet" - Machine Status looks identical either way. Worth an alert.
-
 ## [0.3.20] - 2026-09-04
 
 The machine has been publishing its own beverage catalogue all along, in the

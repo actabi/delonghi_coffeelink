@@ -174,9 +174,6 @@
       },
       "total_mug_to_go": {
         "name": "Всего напитков Mug to Go"
-      },
-      "monitor_published": {
-        "name": "Статус опубликован"
       }
     },
     "button": {

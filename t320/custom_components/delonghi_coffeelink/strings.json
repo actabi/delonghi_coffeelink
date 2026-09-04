@@ -174,9 +174,6 @@
       },
       "total_mug_to_go": {
         "name": "Total Mug to Go"
-      },
-      "monitor_published": {
-        "name": "Status Last Published"
       }
     },
     "button": {
