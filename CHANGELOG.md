@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **A second test fixture: the same reference machine, dumped without the
+  50-character cut** (`tests/fixtures/soul_recipes_full.json`). The truncation
+  was never the machine's doing - it came from the dump script, and it was
+  hiding exactly the data worth having: 20 of the 28 factory descriptors carry
+  their min/default/max ranges past that cut. Readable parameter schemas go from
+  **8 to 27**.
+
+  The parser met these bytes for the first time here, having been written
+  against the truncated dump, and read all 137 blobs with **137/137 checksums
+  valid, nothing truncated, nothing left over by the TLV grammar**.
+
+  What that unlocks: whether a drink has been customised stops being unknown.
+  Espresso reads 48 ml on three of five profiles against a factory default of
+  40, so `off_default` now says so instead of `None`. Doppio sits exactly on its
+  factory 120 ml, and the tests pin both directions.
+
+  The two fixtures are kept side by side on purpose and are complementary rather
+  than nested: the truncated one exercises a real failure shape the parser has
+  to survive, and it still holds the one descriptor this one lacks - the
+  bean-system `0xc8`, which the old `_rec_` name filter never selected. That
+  filter is what selecting by blob family replaced.
+
+  It needs no anonymisation, and a test enforces that rather than trusting it:
+  recipe blobs only, no serial, no MAC, no user-entered text.
+
 ## [0.3.20] - 2026-09-04
 
 The machine has been publishing its own beverage catalogue all along, in the
