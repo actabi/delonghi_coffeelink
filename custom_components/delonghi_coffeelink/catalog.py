@@ -104,9 +104,6 @@ WIDE_TAGS = frozenset({0x01, 0x09, 0x0F})
 CUSTOM_SLOT_IDS = frozenset(range(0xE6, 0xEC))
 BEAN_SYSTEM_IDS = frozenset(range(0xC8, 0xCE))
 
-#: An unprogrammed custom slot: no coffee quantity and the 0xff intensity marker.
-_EMPTY_SLOT_INTENSITY = 0xFF
-
 # Tag meanings pinned by value range against the reference machine. Only the
 # five below are confirmed; the rest are carried through unnamed rather than
 # guessed at.
@@ -338,12 +335,15 @@ def _new_entry(bev_id: int) -> dict:
 def _slot_is_defined(params: dict[int, int]) -> bool:
     """True when a custom slot has actually been programmed on the machine.
 
-    An untouched slot reads back as coffee quantity 0 with the 0xff intensity
-    marker - the machine's own "not defined yet" state.
+    A slot that dispenses nothing has not been programmed. That is the whole
+    test, and it is deliberately the only one: an untouched slot on the
+    reference machine also carries ``0x02 = 0xff`` where a programmed drink
+    carries an intensity, but every such slot already reads zero for coffee,
+    milk and water, so checking the marker as well decided nothing. Dropping it
+    also drops a claim about what ``0xff`` means, which no machine has yet had
+    to confirm - and were a slot ever to carry a real volume alongside it, "it
+    pours something, so it is programmed" is the answer we would want anyway.
     """
-    unset = params.get(TAG_INTENSITY) == _EMPTY_SLOT_INTENSITY
-    if unset and not params.get(TAG_COFFEE_ML):
-        return False
     return any(params.get(tag) for tag in (TAG_COFFEE_ML, TAG_MILK, TAG_WATER_ML))
 
 
