@@ -663,3 +663,113 @@ def test_blob_family_reads_the_family_without_a_full_decode(props: dict):
     assert catalog.blob_family(props["d270_serialnumber"]["value"]) == b"\xa1\x0f"
     for not_a_blob in (None, "", "AA==", "not base64 !!", 42, "QUJDRA=="):
         assert catalog.blob_family(not_a_blob) is None
+
+
+# --- the same machine, dumped without the 50-character cut ------------------ #
+#
+# fixtures/soul_properties.json is a full 312-property dump whose values the
+# dump tool truncated at 50 base64 characters, which is a real shape the parser
+# has to survive - 31 of its blobs are cut, including 20 of the 28 factory
+# descriptors. This second fixture is the same machine's recipe datapoints read
+# again with that cut removed: fewer properties, but every one of them whole.
+#
+# It needs no anonymisation and that is not an oversight: it carries recipe
+# blobs only, no serial, no MAC, no user-entered text. The test below enforces
+# it rather than trusting it.
+
+FULL_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "soul_recipes_full.json"
+
+
+@pytest.fixture(scope="module")
+def full_props() -> dict:
+    return json.loads(FULL_FIXTURE.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def full_cat(full_props: dict) -> dict:
+    return catalog.build_catalog(full_props)
+
+
+def test_the_full_dump_parses_with_nothing_left_over(full_cat: dict):
+    """137 blobs, 137 checksums, nothing cut and nothing the grammar could not eat.
+
+    This is the parser's first run against bytes it was not written from: the
+    truncated dump is what it was developed on, this one arrived afterwards.
+    """
+    stats = full_cat["stats"]
+    assert stats["blobs"] == 137
+    assert stats["crc_ok"] == 137
+    assert stats["crc_failed"] == 0
+    assert stats["truncated"] == 0
+    assert stats["unparsed_payloads"] == 0
+    assert stats["short_payloads"] == 0
+
+
+def test_removing_the_cut_turns_8_readable_schemas_into_27(cat: dict, full_cat: dict):
+    """The truncation was hiding the machine's own parameter ranges.
+
+    Same machine, same descriptors: 20 of the 28 were unreadable purely because
+    the dump tool stopped at 50 base64 characters.
+
+    The two fixtures are complementary rather than nested, and the one id that
+    proves it is worth keeping: the bean-system descriptor `0xc8` is readable in
+    the truncated dump and absent from this one, because the dump that produced
+    it still selected properties by the `_rec_` substring, which never matched
+    `d022_beansystem_1`. That filter is what selecting by blob family replaced.
+    """
+    truncated_ranges = {i for i, item in cat["beverages"].items() if item["ranges"]}
+    full_ranges = {i for i, item in full_cat["beverages"].items() if item["ranges"]}
+    assert len(truncated_ranges) == 8
+    assert len(full_ranges) == 27
+    assert truncated_ranges - full_ranges == {0xC8}, "only the bean system, and only by name filter"
+    assert truncated_ranges - {0xC8} < full_ranges, "every truncated-dump range survives"
+
+
+def test_espresso_ranges_are_now_readable(full_cat: dict):
+    """Espresso is the drink whose descriptor the old dump cut in half."""
+    espresso = full_cat["beverages"][0x01]
+    assert espresso["descriptor_truncated"] is False
+    assert espresso["ranges"][catalog.TAG_COFFEE_ML] == (20, 40, 180)
+    assert espresso["ranges"][catalog.TAG_TEMPERATURE] == (0, 1, 4)
+
+
+def test_customisation_becomes_knowable_instead_of_unknown(cat: dict, full_cat: dict):
+    """`off_default` was None for espresso only because the default was missing.
+
+    With the factory descriptor readable, the same per-profile values resolve to
+    a definite answer: 48 ml against a factory 40 is a customisation, and the
+    parser now says so rather than shrugging.
+    """
+    assert cat["beverages"][0x01]["off_default"] is None
+    espresso = full_cat["beverages"][0x01]
+    assert espresso["off_default"][catalog.TAG_COFFEE_ML] is True
+    volumes = {p[catalog.TAG_COFFEE_ML] for p in espresso["profiles"].values()}
+    assert volumes == {40, 48}
+
+    # And the mirror case, so this does not just assert that everything is
+    # customised: doppio sits exactly on its factory default on every profile.
+    doppio = full_cat["beverages"][0x05]
+    assert doppio["ranges"][catalog.TAG_COFFEE_ML][1] == 120
+    assert doppio["off_default"][catalog.TAG_COFFEE_ML] is False
+
+
+def test_the_recipe_fixture_needs_no_anonymisation(full_props: dict):
+    """Recipe blobs only - no serial, no MAC, no name the household typed in.
+
+    Pinned rather than assumed, because the day someone refreshes this file from
+    a wider dump is the day it starts carrying identifiers.
+    """
+    import re
+
+    for name, prop in full_props.items():
+        raw = catalog._b64_bytes(prop["value"])
+        assert raw is not None, name
+        for encoding in ("utf-16-be", "latin-1"):
+            text = raw.decode(encoding, "ignore")
+            assert not re.search(r"[A-Za-z][A-Za-z0-9 ._/()-]{3,}", text), f"{name}: {text!r}"
+    families = {catalog.blob_family(p["value"]) for p in full_props.values()}
+    assert families <= {
+        catalog.FAMILY_DESCRIPTOR,
+        catalog.FAMILY_PROFILE_RECIPE,
+        catalog.FAMILY_MENU,
+    }, "a text-bearing family would need the anonymiser"
