@@ -17,7 +17,7 @@ family       n     meaning
 ===========  ====  ==============================================================
 ``b0 f0``    28    factory descriptor - the capability schema (min/default/max)
 ``a6 f0``    140   per-profile instance - the current value of each parameter
-``a8 f0``    5     the machine's own ordered menu, one list per profile
+``a8 f0``    5     a per-profile ordered short list, 18 slots (see below)
 ``a4 f0``    2     profile names (UTF-16BE, user-entered)
 ``aa f0``    2     custom-recipe slot names
 ``ba f0``    7     bean-system names
@@ -27,6 +27,17 @@ The other four are the serial number (``a1 0f``), the machine settings including
 the PIN (``95 0f``), the monitor blob (``75 0f``) and the command-response
 channel (``a9 f0``). They are deliberately out of scope here, and out of the
 diagnostic dump too - see ``command_builder.recipe_dump_lines``.
+
+What the ``a8f0`` lists are NOT: the set of drinks the machine can make. Every
+list is exactly 18 entries long on the reference machine, on all five profiles,
+which makes 18 look like a capacity rather than a count - and the contents move.
+Two dumps of the same machine, days apart, disagree: profiles 1, 4 and 5 dropped
+Doppio+ and gained the bean-system drink, while profiles 2 and 3 kept Doppio+
+and never had the bean system. Doppio+ has been brewed 823 times on that
+machine. So a drink can be absent from all five lists and still be the second
+most-used drink in the household. Treat these lists as an ordered short list per
+profile - a carousel, a favourites row, something of that shape - and never as
+proof that a drink exists or does not.
 
 Two rules make the whole thing parseable without per-beverage special cases:
 
@@ -54,9 +65,10 @@ is missing:
   truncated or missing. Cross-profile disagreement is reported separately as
   ``profiles_differ`` - it is a weaker signal and must not be read as "the user
   changed this".
-* ``on_menu`` is ``None`` for anything the menu blob does not enumerate (custom
-  slots, bean-system), so it can never be used as an existence test against the
-  very entries discovery exists to find.
+* ``in_priority_list`` is never an existence test, for either answer. The
+  ``a8f0`` lists are a per-profile ordered *selection* of fixed size, not the
+  set of drinks the machine can make - see below - so a drink can be missing
+  from every one of them and still be brewed daily.
 """
 from __future__ import annotations
 
@@ -70,7 +82,7 @@ from .const import (
     BLOB_FAMILY_BEAN_NAMES,
     BLOB_FAMILY_CUSTOM_NAMES,
     BLOB_FAMILY_DESCRIPTOR,
-    BLOB_FAMILY_MENU,
+    BLOB_FAMILY_PRIORITY,
     BLOB_FAMILY_PROFILE_NAMES,
     BLOB_FAMILY_PROFILE_RECIPE,
     CMD_RESPONSE_PREFIX,
@@ -83,7 +95,7 @@ BLOB_PREFIX = CMD_RESPONSE_PREFIX
 
 FAMILY_DESCRIPTOR = BLOB_FAMILY_DESCRIPTOR
 FAMILY_PROFILE_RECIPE = BLOB_FAMILY_PROFILE_RECIPE
-FAMILY_MENU = BLOB_FAMILY_MENU
+FAMILY_PRIORITY = BLOB_FAMILY_PRIORITY
 FAMILY_PROFILE_NAMES = BLOB_FAMILY_PROFILE_NAMES
 FAMILY_CUSTOM_NAMES = BLOB_FAMILY_CUSTOM_NAMES
 FAMILY_BEAN_NAMES = BLOB_FAMILY_BEAN_NAMES
@@ -91,7 +103,7 @@ FAMILY_BEAN_NAMES = BLOB_FAMILY_BEAN_NAMES
 FAMILY_LABELS = {
     FAMILY_DESCRIPTOR: "factory_descriptor",
     FAMILY_PROFILE_RECIPE: "profile_recipe",
-    FAMILY_MENU: "menu_order",
+    FAMILY_PRIORITY: "priority_list",
     FAMILY_PROFILE_NAMES: "profile_names",
     FAMILY_CUSTOM_NAMES: "custom_names",
     FAMILY_BEAN_NAMES: "bean_names",
@@ -120,7 +132,7 @@ TAG_INTENSITY = 0x02
 _MIN_PAYLOAD = {
     FAMILY_DESCRIPTOR: 1,
     FAMILY_PROFILE_RECIPE: 2,
-    FAMILY_MENU: 2,
+    FAMILY_PRIORITY: 2,
     FAMILY_PROFILE_NAMES: 2,
     FAMILY_CUSTOM_NAMES: 2,
     FAMILY_BEAN_NAMES: 2,
@@ -323,8 +335,8 @@ def _new_entry(bev_id: int) -> dict:
         "descriptor_truncated": False,
         "ranges": {},
         "profiles": {},
-        "on_menu": None,
-        "menu_position": {},
+        "in_priority_list": None,
+        "priority_position": {},
         "defined": None,
         "profiles_differ": False,
         "off_default": None,
@@ -354,7 +366,7 @@ def build_catalog(props: dict) -> dict:
     caller decides what to do with it; nothing here creates or removes entities.
     """
     beverages: dict[int, dict] = {}
-    menu: dict[int, list[int]] = {}
+    priority: dict[int, list[int]] = {}
     names: dict[str, dict[int, str]] = {"profiles": {}, "custom": {}, "beans": {}}
     stats = {
         "blobs": 0,
@@ -415,9 +427,9 @@ def build_catalog(props: dict) -> dict:
                 stats["unparsed_payloads"] += 1
             else:
                 item["profiles"][profile] = params
-        elif family == FAMILY_MENU:
+        elif family == FAMILY_PRIORITY:
             profile = payload[0]
-            menu[profile] = list(payload[2:])
+            priority[profile] = list(payload[2:])
         elif family in (FAMILY_PROFILE_NAMES, FAMILY_CUSTOM_NAMES, FAMILY_BEAN_NAMES):
             bucket = {
                 FAMILY_PROFILE_NAMES: "profiles",
@@ -430,36 +442,41 @@ def build_catalog(props: dict) -> dict:
             if text:
                 names[bucket][payload[0]] = text
 
-    _apply_menu(beverages, menu)
+    _apply_priority(beverages, priority)
     for item in beverages.values():
         _finalize(item)
 
     return {
         "source": "machine" if beverages else "empty",
         "beverages": beverages,
-        "menu": menu,
+        "priority_lists": priority,
         "names": names,
         "stats": stats,
     }
 
 
-def _apply_menu(beverages: dict[int, dict], menu: dict[int, list[int]]) -> None:
-    """Mark which built-in drinks the machine actually lists in its own menu.
+def _apply_priority(beverages: dict[int, dict], priority: dict[int, list[int]]) -> None:
+    """Record which drinks appear in each profile's ordered short list.
 
-    ``on_menu`` stays ``None`` for custom slots and the bean system: the menu
-    blob enumerates neither, so treating absence as "does not exist" would
-    suppress exactly the entries discovery is for.
+    ``in_priority_list`` says exactly that and nothing more. It is not an
+    existence test in either direction: the lists hold a fixed 18 entries and
+    their contents change over time, so a drink can be absent from all of them
+    and still be brewed daily. Doppio+ is the proof - 823 brews on the reference
+    machine, absent from three of the five lists, and absent from all five in an
+    earlier dump.
+
+    It stays ``None`` where no list was read at all, so "no opinion" and "not
+    selected" never collapse into the same answer.
     """
-    if not menu:
+    if not priority:
         return
-    listed = {bev_id for ids in menu.values() for bev_id in ids}
-    for profile, ids in menu.items():
+    listed = {bev_id for ids in priority.values() for bev_id in ids}
+    for profile, ids in priority.items():
         for position, bev_id in enumerate(ids):
             item = beverages.setdefault(bev_id, _new_entry(bev_id))
-            item["menu_position"][profile] = position
-    for bev_id, item in beverages.items():
-        if item["kind"] == "builtin":
-            item["on_menu"] = bev_id in listed
+            item["priority_position"][profile] = position
+    for item in beverages.values():
+        item["in_priority_list"] = item["id"] in listed
 
 
 def _finalize(item: dict) -> None:
@@ -505,22 +522,22 @@ def catalog_summary(catalog: dict | None) -> str:
         return "no machine catalogue (no readable recipe blobs)"
     beverages = catalog["beverages"]
     stats = catalog["stats"]
-    on_menu = sum(1 for item in beverages.values() if item["on_menu"] is True)
-    off_menu = sum(1 for item in beverages.values() if item["on_menu"] is False)
+    listed = sum(1 for item in beverages.values() if item["in_priority_list"] is True)
+    unlisted = sum(1 for item in beverages.values() if item["in_priority_list"] is False)
     custom = sum(1 for item in beverages.values() if item["kind"] == "custom")
     defined = sum(1 for item in beverages.values() if item["defined"] is True)
     with_ranges = sum(1 for item in beverages.values() if item["ranges"])
-    # "0 on the machine menu" and "the machine published no menu" are different
-    # statements, and only one of them is true when no menu blob was readable.
-    menu_part = (
-        f"{on_menu} on the machine menu, {off_menu} declared but off-menu"
-        if catalog["menu"]
-        else "menu not published"
+    # "0 in a profile short list" and "no short list was published" are
+    # different statements, and only one is true when no a8f0 blob was readable.
+    priority_part = (
+        f"{listed} in a profile short list, {unlisted} in none"
+        if catalog["priority_lists"]
+        else "no profile short list published"
     )
     return (
-        f"{len(beverages)} beverage ids ({menu_part}, "
+        f"{len(beverages)} beverage ids ({priority_part}, "
         f"{custom} custom slots of which {defined} programmed), {with_ranges} with "
-        f"factory min/default/max ranges, {len(catalog['menu'])} profile menus | blobs="
+        f"factory min/default/max ranges, {len(catalog['priority_lists'])} profile lists | blobs="
         f"{stats['blobs']} crc_ok={stats['crc_ok']} crc_failed={stats['crc_failed']} "
         f"truncated={stats['truncated']} unparsed={stats['unparsed_payloads']} "
         f"short={stats['short_payloads']}"

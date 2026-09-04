@@ -31,10 +31,11 @@ Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla N
 - Generic Stop button
 - Services for raw binary command injection (advanced use)
 - Reads the machine's **own recipe catalogue** from the properties it already
-  publishes - which drinks it really offers and in what order per profile, every
-  parameter of every drink on every profile, the editable min/default/max ranges,
-  the saved-recipe slots. Currently used to keep the diagnostics and the
-  learn-and-replay path honest; it creates no entities yet.
+  publishes - every parameter of every drink on every profile, the editable
+  min/default/max ranges the machine itself declares, the saved-recipe slots and
+  the bean-system drink, plus each profile's ordered short list. Currently used
+  to keep the diagnostics and the learn-and-replay path honest; it creates no
+  entities yet.
 
 ### When the machine is unreachable
 

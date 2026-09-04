@@ -73,7 +73,7 @@ def test_family_census_matches_the_reference_machine(cat: dict):
     families = cat["stats"]["families"]
     assert families["factory_descriptor"] == 28
     assert families["profile_recipe"] == 140  # 28 ids x 5 profiles
-    assert families["menu_order"] == 5  # one ordered menu per profile
+    assert families["priority_list"] == 5  # one ordered menu per profile
     assert families["profile_names"] == 2
     assert families["custom_names"] == 2
     assert families["bean_names"] == 7
@@ -186,39 +186,52 @@ def test_triples_refuse_a_partial_walk():
 # --- what the machine says it can make ------------------------------------- #
 
 
-def test_the_menu_is_the_machines_own_ordered_list(cat: dict):
-    """5 profiles, 18 drinks each, identical set, different order per profile."""
-    menu = cat["menu"]
-    assert sorted(menu) == [1, 2, 3, 4, 5]
-    assert {len(ids) for ids in menu.values()} == {18}
-    sets = [frozenset(ids) for ids in menu.values()]
-    assert len(set(sets)) == 1, "all profiles offer the same drinks"
-    assert len({tuple(ids) for ids in menu.values()}) > 1, "but not in the same order"
+def test_each_profile_has_an_ordered_short_list_of_fixed_size(cat: dict):
+    """5 profiles, 18 entries each, ordered differently.
 
-
-def test_three_drinks_are_declared_but_not_on_the_menu(cat: dict):
-    """The integration currently offers 21 buttons; this machine lists 18.
-
-    long_black, mug_to_go and brew_over_ice have recipe slots from the shared
-    firmware template and lifetime counters stuck at 0, but the machine never
-    lists them - so three of the buttons we ship for it are fiction.
+    18 on every profile of every dump is what makes it look like a capacity
+    rather than a count - see the drift test below.
     """
-    off_menu = {i for i, item in cat["beverages"].items() if item["on_menu"] is False}
-    assert off_menu == {0x19, 0x1A, 0x1B}
-    on_menu = [i for i, item in cat["beverages"].items() if item["on_menu"] is True]
-    assert len(on_menu) == 18
+    priority = cat["priority_lists"]
+    assert sorted(priority) == [1, 2, 3, 4, 5]
+    assert {len(ids) for ids in priority.values()} == {18}
+    assert len({tuple(ids) for ids in priority.values()}) > 1, "ordered differently"
 
 
-def test_on_menu_is_unknown_for_slots_the_menu_does_not_enumerate(cat: dict):
-    """``on_menu`` must never be an existence test for custom or bean slots.
+def test_being_in_no_short_list_does_not_mean_the_drink_is_unavailable(cat: dict):
+    """The correction that cost the most to learn, pinned so it cannot come back.
 
-    The menu blob lists only built-in ids, so reading "absent from the menu" as
-    "does not exist" would suppress precisely the entries discovery is for.
+    long_black, mug_to_go and brew_over_ice sit in none of the five lists, and it
+    would be easy to read that as "this machine cannot make them" and hide their
+    buttons. Doppio+ is the counter-example that forbids it: absent from three of
+    the five lists in the production dump, absent from all five in this one, and
+    brewed 823 times on the very same machine.
     """
-    for bev_id in list(catalog.CUSTOM_SLOT_IDS) + [0xC8]:
-        item = cat["beverages"].get(bev_id)
-        if item is not None:
-            assert item["on_menu"] is None
+    unlisted = {i for i, item in cat["beverages"].items() if item["in_priority_list"] is False}
+    assert {0x19, 0x1A, 0x1B} <= unlisted
+    listed = [i for i, item in cat["beverages"].items() if item["in_priority_list"] is True]
+    assert len(listed) == 18
+
+
+def test_in_priority_list_is_unknown_only_when_no_list_was_read():
+    """"Not selected" and "no opinion" must stay distinguishable.
+
+    Every drink gets a definite True/False once any list is read, including the
+    custom slots and the bean system that no list enumerates - the flag reports
+    membership, and membership of an unread list is what `None` is for.
+    """
+    descriptor = _blob(catalog.FAMILY_DESCRIPTOR, bytes([0x10, catalog.TAG_WATER_ML, 0, 20, 0, 250, 1, 164]))
+    without = catalog.build_catalog({"d015_rec_hot_water": {"value": descriptor}})
+    assert without["beverages"][0x10]["in_priority_list"] is None
+
+    with_list = catalog.build_catalog(
+        {
+            "d015_rec_hot_water": {"value": descriptor},
+            "d261_1_rec_priority": {"value": _blob(catalog.FAMILY_PRIORITY, bytes([1, 0xC8, 0x07]))},
+        }
+    )
+    assert with_list["beverages"][0x10]["in_priority_list"] is False
+    assert with_list["beverages"][0x07]["in_priority_list"] is True
 
 
 def test_custom_slots_are_found_and_reported_as_unprogrammed(cat: dict):
@@ -377,7 +390,7 @@ def test_summary_reports_what_was_unreadable(cat: dict):
     """The diagnostic line must show the truncation, not hide it."""
     summary = catalog.catalog_summary(cat)
     assert "28 beverage ids" in summary
-    assert "18 on the machine menu" in summary
+    assert "in a profile short list" in summary
     assert "truncated=31" in summary
 
 
@@ -431,7 +444,7 @@ def test_a_blob_too_short_for_its_own_header_is_refused():
     for family in (
         catalog.FAMILY_DESCRIPTOR,
         catalog.FAMILY_PROFILE_RECIPE,
-        catalog.FAMILY_MENU,
+        catalog.FAMILY_PRIORITY,
         catalog.FAMILY_BEAN_NAMES,
     ):
         blob = _blob(family, b"")
@@ -441,12 +454,12 @@ def test_a_blob_too_short_for_its_own_header_is_refused():
         assert cat["beverages"] == {}
 
 
-def test_a_menu_entry_without_a_recipe_is_listed_but_not_declared():
-    """On the menu, yet no descriptor: exists for the user, not learnable."""
-    blob = _blob(catalog.FAMILY_MENU, bytes([1, 0xC8, 0x07]))
+def test_a_listed_entry_without_a_recipe_is_listed_but_not_declared():
+    """In a short list, yet no descriptor: worth showing, not worth learning."""
+    blob = _blob(catalog.FAMILY_PRIORITY, bytes([1, 0xC8, 0x07]))
     cat = catalog.build_catalog({"d261_1_rec_priority": {"value": blob}})
     entry = cat["beverages"][0x07]
-    assert entry["on_menu"] is True
+    assert entry["in_priority_list"] is True
     assert entry["declared"] is False
     assert catalog.catalog_beverage_ids(cat) == set()
 
@@ -531,13 +544,13 @@ def test_profiles_differ_is_asserted_both_ways(cat: dict):
     assert catalog.build_catalog(same)["beverages"][0x01]["profiles_differ"] is False
 
 
-def test_on_menu_is_unknown_when_no_menu_blob_was_read():
-    """No menu blob means no opinion - never "not on the menu"."""
+def test_the_summary_says_unpublished_rather_than_zero():
+    """No a8f0 blob means no opinion, and the summary must not imply zero."""
     payload = bytes([0x10, catalog.TAG_WATER_ML, 0, 20, 0, 250, 1, 164])
     cat = catalog.build_catalog({"d015_rec_hot_water": {"value": _blob(catalog.FAMILY_DESCRIPTOR, payload)}})
-    assert cat["beverages"][0x10]["on_menu"] is None
-    assert cat["menu"] == {}
-    assert "0 on the machine menu" not in catalog.catalog_summary(cat)
+    assert cat["beverages"][0x10]["in_priority_list"] is None
+    assert cat["priority_lists"] == {}
+    assert "no profile short list published" in catalog.catalog_summary(cat)
 
 
 def test_an_unparsable_payload_is_counted_and_never_half_parsed():
@@ -598,9 +611,9 @@ def test_name_blobs_are_filed_by_family_and_slot():
 def test_summary_reports_every_counter(cat: dict):
     """Spot-checking three substrings let the other five counters mutate freely."""
     assert catalog.catalog_summary(cat) == (
-        "28 beverage ids (18 on the machine menu, 3 declared but off-menu, "
+        "28 beverage ids (18 in a profile short list, 10 in none, "
         "6 custom slots of which 0 programmed), 8 with factory min/default/max "
-        "ranges, 5 profile menus | blobs=194 crc_ok=163 crc_failed=0 "
+        "ranges, 5 profile lists | blobs=194 crc_ok=163 crc_failed=0 "
         "truncated=31 unparsed=0 short=0"
     )
 
@@ -659,7 +672,7 @@ def test_the_fingerprint_normalises_whitespace_like_the_parser(props: dict):
 
 def test_blob_family_reads_the_family_without_a_full_decode(props: dict):
     assert catalog.blob_family(props["d039_1_rec_espresso"]["value"]) == catalog.FAMILY_PROFILE_RECIPE
-    assert catalog.blob_family(props["d261_1_rec_priority"]["value"]) == catalog.FAMILY_MENU
+    assert catalog.blob_family(props["d261_1_rec_priority"]["value"]) == catalog.FAMILY_PRIORITY
     assert catalog.blob_family(props["d270_serialnumber"]["value"]) == b"\xa1\x0f"
     for not_a_blob in (None, "", "AA==", "not base64 !!", 42, "QUJDRA=="):
         assert catalog.blob_family(not_a_blob) is None
@@ -773,7 +786,7 @@ def test_the_recipe_fixture_needs_no_anonymisation(full_props: dict):
     assert families <= {
         catalog.FAMILY_DESCRIPTOR,
         catalog.FAMILY_PROFILE_RECIPE,
-        catalog.FAMILY_MENU,
+        catalog.FAMILY_PRIORITY,
     }, "a text-bearing family would need the anonymiser"
 
 
@@ -809,4 +822,27 @@ def test_the_bean_system_drink_carries_a_real_schema(full_cat: dict):
     assert bean["ranges"][catalog.TAG_COFFEE_ML] == (30, 40, 60)
     assert bean["ranges"][catalog.TAG_INTENSITY] == (1, 4, 5)
     assert len(bean["profiles"]) == 5, "one per-profile recipe per profile"
-    assert bean["on_menu"] is None, "the menu blob does not enumerate it"
+    assert bean["in_priority_list"] is True, "it is in three of the five lists"
+
+
+def test_the_short_lists_drift_between_two_dumps_of_one_machine(cat: dict, full_cat: dict):
+    """The evidence that 18 is a capacity and the lists are a selection.
+
+    Same machine, two dumps. Both times every profile holds exactly 18 entries.
+    But profiles 1, 4 and 5 swapped Doppio+ out for the bean-system drink between
+    them, while 2 and 3 kept Doppio+ and never carried the bean system.
+
+    A fixed size with moving contents is what a carousel looks like, not what a
+    capability list looks like - which is why nothing in this module treats
+    membership as proof that a drink exists.
+    """
+    assert {len(ids) for ids in cat["priority_lists"].values()} == {18}
+    assert {len(ids) for ids in full_cat["priority_lists"].values()} == {18}
+
+    def profiles_holding(catalogue: dict, bev_id: int) -> set:
+        return set(catalogue["beverages"][bev_id]["priority_position"])
+
+    assert profiles_holding(cat, 0x05) == {1, 2, 3, 4, 5}, "Doppio+ was on every list"
+    assert profiles_holding(full_cat, 0x05) == {2, 3}, "and later on only two"
+    assert profiles_holding(cat, 0xC8) == set(), "the bean system was on none"
+    assert profiles_holding(full_cat, 0xC8) == {1, 4, 5}, "and later took the free slots"
