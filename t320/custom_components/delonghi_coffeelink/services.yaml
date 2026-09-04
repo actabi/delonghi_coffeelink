@@ -1,0 +1,54 @@
+start_beverage:
+  fields:
+    beverage:
+      required: true
+      example: hot_water
+      selector:
+        select:
+          translation_key: beverage
+          options:
+            - espresso
+            - coffee
+            - long_coffee
+            - double_espresso
+            - doppio
+            - americano
+            - cappuccino
+            - latte_macchiato
+            - caffelatte
+            - flat_white
+            - espresso_macchiato
+            - hot_milk
+            - cappuccino_doppio
+            - cappuccino_reverse
+            - hot_water
+            - tea
+            - coffee_pot
+            - cortado
+            - long_black
+            - mug_to_go
+            - brew_over_ice
+
+stop_beverage:
+  fields:
+    beverage:
+      required: true
+      example: hot_water
+      selector:
+        select:
+          translation_key: beverage
+          options:
+            - espresso
+            - coffee
+            - hot_water
+            - tea
+            - cappuccino
+            - americano
+
+send_raw_command:
+  fields:
+    value_base64:
+      required: true
+      example: DQ2D8BABDwD6GwEGgSRp6Myg
+      selector:
+        text:

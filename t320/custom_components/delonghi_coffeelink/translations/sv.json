@@ -174,9 +174,6 @@
       },
       "total_mug_to_go": {
         "name": "Mugg att ta med totalt"
-      },
-      "monitor_published": {
-        "name": "Status senast publicerad"
       }
     },
     "button": {

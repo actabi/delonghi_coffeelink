@@ -1,0 +1,938 @@
+{
+ "d001_rec_espresso": {
+  "value": "0CWw8AEIAAABGAABAQEAFAAoALQbAAEEAgAEBQQAAAAZAAEBuZ"
+ },
+ "d002_rec_regular": {
+  "value": "0CGw8AIYAAEBGQABARsAAQQBAGQAtADwAgADBQQAAAAAzA=="
+ },
+ "d003_rec_long_coffee": {
+  "value": "0CGw8AMYAAEBGQABAQEAcwCgAPobAAEEAgADBQQAAAB65A=="
+ },
+ "d004_rec_2x_espresso": {
+  "value": "0CWw8AQIAQEBGAAAAAEAKABQAWgbAAEEAgAEBQQAAAAZAAEBlh"
+ },
+ "d005_rec_doppio": {
+  "value": "0B2w8AUYAAEBGQABAQEAUAB4ALQbAAEEBAAAADiZ"
+ },
+ "d006_rec_americano": {
+  "value": "0Ciw8AYYAAEBGQABAQEAFAAoALQPADIAbgEsGwABBAIAAwUEAA"
+ },
+ "d007_rec_cappuccino": {
+  "value": "0Cyw8AccAgICGAABARkAAQEBABQAQQC0GwABBAIAAwUJADIAqg"
+ },
+ "d008_rec_latte_macchiato": {
+  "value": "0Cyw8AgcAgICGAABARkAAQEBABQAPAC0GwABBAIAAwUJADIBIg"
+ },
+ "d009_rec_caffelatte": {
+  "value": "0Cyw8AkcAgICGAABARkAAQEBABQAPAC0GwABBAIAAwUJADIBfA"
+ },
+ "d010_rec_flat_white": {
+  "value": "0DCw8AoMAQEBHAICAhgAAQEZAAEBAQAUADwAtBsAAQQCAAMFCQ"
+ },
+ "d011_rec_espr_macchiato": {
+  "value": "0Cyw8AscAgICGAABARkAAQEBABQAHgC0GwABBAIAAwUJAB4AKA"
+ },
+ "d012_rec_hot_milk": {
+  "value": "0B2w8AwcAgICGAABARkAAQEJADIBaAQ4GwABBAf0"
+ },
+ "d013_rec_capp_doppio": {
+  "value": "0Ciw8A0cAgICGAABARkAAQEBAFAAZAC0GwABBAkAMgCWBDgEAA"
+ },
+ "d014_rec_capp_reverse": {
+  "value": "0DCw8A8MAQEBHAICAhgAAQEZAAEBAQAUAEEAtBsAAQQCAAMFCQ"
+ },
+ "d015_rec_hot_water": {
+  "value": "0Bmw8BAYAAEBGQABAQ8AFAD6AaQbAAEEN5Y="
+ },
+ "d016_rec_tea": {
+  "value": "0B2w8BYYAAEBGQACAg8AFACWAaQbAAEEDQABA64W"
+ },
+ "d017_rec_coffee_pot": {
+  "value": "0CGw8BcZAAICAQB9AJYA+hsAAQMEAAAAHgAABQIFBQV1uA=="
+ },
+ "d018_rec_cortado": {
+  "value": "0DCw8BgMAQEBHAICAhgAAQEZAAEBAQAUACgAtBsAAQQCAAMFCQ"
+ },
+ "d019_rec_long_black": {
+  "value": "0CWw8BkIAAABGAABAQEAFAAoALQbAAEEAgAEBQQAAAAZAAEBly"
+ },
+ "d020_rec_mug_to_go": {
+  "value": "0CWw8BoIAAABGAABAQEAFAAoALQbAAEEAgAEBQQAAAAZAAEBfO"
+ },
+ "d021_rec_brew_over_ice": {
+  "value": "0CWw8BsIAAABGAABAQEAFAAoALQbAAEEAgAEBQQAAAAZAAEBJa"
+ },
+ "d022_beansystem_1": {
+  "value": "0B2w8MgYAAEBAQAeACgAPBsAAQQCAQQFGQACAoMB"
+ },
+ "d028_rec_custom_1": {
+  "value": "0Cyw8OYYAAEBAQAUAAAAtAIA/wUJADIAAAQ4BAAAAAwAAAEcAA"
+ },
+ "d029_rec_custom_2": {
+  "value": "0Cyw8OcYAAEBAQAUAAAAtAIA/wUJADIAAAQ4BAAAAAwAAAEcAA"
+ },
+ "d030_rec_custom_3": {
+  "value": "0Cyw8OgYAAEBAQAUAAAAtAIA/wUJADIAAAQ4BAAAAAwAAAEcAA"
+ },
+ "d031_rec_custom_4": {
+  "value": "0Cyw8OkYAAEBAQAUAAAAtAIA/wUJADIAAAQ4BAAAAAwAAAEcAA"
+ },
+ "d032_rec_custom_5": {
+  "value": "0Cyw8OoYAAEBAQAUAAAAtAIA/wUJADIAAAQ4BAAAAAwAAAEcAA"
+ },
+ "d033_rec_custom_6": {
+  "value": "0Cyw8OsYAAEBAQAUAAAAtAIA/wUJADIAAAQ4BAAAAAwAAAEcAA"
+ },
+ "d034_profiles_1_3": {
+  "value": "0Eek8AEDAFAAcgBvAGYAaQBsAGUAIAAyAAAAAAAAAAAAAAAA"
+ },
+ "d035_profiles_4_5": {
+  "value": "0Aik8AQFAEtE"
+ },
+ "d036_recipe_custom_name_1_3": {
+  "value": "0Eaq8AEDAFMAbABvAHQAIAAyAAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d037_recipe_custom_name_4_5": {
+  "value": "0Eaq8AQGAFMAbABvAHQAIAA1AAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d039_1_rec_espresso": {
+  "value": "0BSm8AEBCAABADAbAgIEBAAZAQFp"
+ },
+ "d040_1_rec_regular": {
+  "value": "0BKm8AECGQEbAQEAtAIDBAAKng=="
+ },
+ "d041_1_rec_long_coffee": {
+  "value": "0BKm8AEDGQEBAKAbAQIDBABbfw=="
+ },
+ "d042_1_rec_2x_espresso": {
+  "value": "0BSm8AEECAEBAGAbAgIEBAAZAYj/"
+ },
+ "d043_1_rec_doppio": {
+  "value": "0BCm8AEFGQEBAHgbAQQAnXY="
+ },
+ "d044_1_rec_americano": {
+  "value": "0BWm8AEGGQEBACgPAG4bAQIDBAAyqA=="
+ },
+ "d045_1_rec_cappuccino": {
+  "value": "0Bem8AEHHAIZAQEAThsCAgMJAMwEAN8z"
+ },
+ "d046_1_rec_latte_macchiato": {
+  "value": "0Bem8AEIHAIZAQEASBsCAgMJAVwEAFe/"
+ },
+ "d047_1_rec_caffelatte": {
+  "value": "0Bem8AEJHAIZAQEAPBsBAgMJAXwEAHta"
+ },
+ "d048_1_rec_flat_white": {
+  "value": "0Bmm8AEKDAEcAhkBAQA8GwECAwkA3AQAeyM="
+ },
+ "d049_1_rec_espr_macchiato": {
+  "value": "0Bem8AELHAIZAQEAHhsBAgMJACgEAEmj"
+ },
+ "d050_1_rec_hot_milk": {
+  "value": "0BCm8AEMHAIZAQkBaBsBJPo="
+ },
+ "d051_1_rec_capp_doppio": {
+  "value": "0BWm8AENHAIZAQEAZBsBCQCWBABQVg=="
+ },
+ "d052_1_rec_capp_reverse": {
+  "value": "0Bmm8AEPDAEcAhkBAQBBGwECAwkAqgQA0DE="
+ },
+ "d053_1_rec_hot_water": {
+  "value": "0A6m8AEQGQEPAPobAU9C"
+ },
+ "d054_1_rec_tea": {
+  "value": "0BCm8AEWGQIPAJYbAQ0BHM8="
+ },
+ "d055_1_rec_coffee_pot": {
+  "value": "0BKm8AEXGQIBAJYbAQQAAgWsVg=="
+ },
+ "d056_1_rec_cortado": {
+  "value": "0Bmm8AEYDAEcAhkBAQAoGwECAwkAKAQA4VA="
+ },
+ "d057_1_rec_long_black": {
+  "value": "0BSm8AEZCAABADAbAgIEBAAZASz1"
+ },
+ "d058_1_rec_mug_to_go": {
+  "value": "0BSm8AEaCAABADAbAgIEBAAZAaFW"
+ },
+ "d059_1_rec_brew_over_ice": {
+  "value": "0BSm8AEbCAABADAbAgIEBAAZAdo3"
+ },
+ "d060_2_rec_espresso": {
+  "value": "0BSm8AIBCAABACgbAQIEBAAZAUDP"
+ },
+ "d061_2_rec_regular": {
+  "value": "0BKm8AICGQEbAQEAtAIDBADFOw=="
+ },
+ "d062_2_rec_long_coffee": {
+  "value": "0BKm8AIDGQEBAKAbAQIDBACU2g=="
+ },
+ "d063_2_rec_2x_espresso": {
+  "value": "0BSm8AIECAEBAFAbAQIEBAAZAUda"
+ },
+ "d064_2_rec_doppio": {
+  "value": "0BCm8AIFGQEBAHgbAQQA5Yw="
+ },
+ "d065_2_rec_americano": {
+  "value": "0BWm8AIGGQEBACgPAG4bAQIDBADa5Q=="
+ },
+ "d066_2_rec_cappuccino": {
+  "value": "0Bem8AIHHAIZAQEAThsCAgMJAMwEAN9B"
+ },
+ "d067_2_rec_latte_macchiato": {
+  "value": "0Bem8AIIHAIZAQEAPBsBAgMJASIEAC4F"
+ },
+ "d068_2_rec_caffelatte": {
+  "value": "0Bem8AIJHAIZAQEAPBsBAgMJAXwEAHso"
+ },
+ "d069_2_rec_flat_white": {
+  "value": "0Bmm8AIKDAEcAhkBAQA8GwECAwkA3AQAJfY="
+ },
+ "d070_2_rec_espr_macchiato": {
+  "value": "0Bem8AILHAIZAQEAHhsBAgMJACgEAEnR"
+ },
+ "d071_2_rec_hot_milk": {
+  "value": "0BCm8AIMHAIZAQkBaBsBXAA="
+ },
+ "d072_2_rec_capp_doppio": {
+  "value": "0BWm8AINHAIZAQEAZBsBCQCWBAC4Gw=="
+ },
+ "d073_2_rec_capp_reverse": {
+  "value": "0Bmm8AIPDAEcAhkBAQBBGwECAwkAqgQAjuQ="
+ },
+ "d074_2_rec_hot_water": {
+  "value": "0A6m8AIQGQEPAPobAWIG"
+ },
+ "d075_2_rec_tea": {
+  "value": "0BCm8AIWGQIPAOEbAw0CQGQ="
+ },
+ "d076_2_rec_coffee_pot": {
+  "value": "0BKm8AIXGQIBAJYbAQQAAgVj8w=="
+ },
+ "d077_2_rec_cortado": {
+  "value": "0Bmm8AIYDAEcAhkBAQAoGwECAwkAKAQAv4U="
+ },
+ "d078_2_rec_long_black": {
+  "value": "0BSm8AIZCAABACgbAQIEBAAZAW1T"
+ },
+ "d079_2_rec_mug_to_go": {
+  "value": "0BSm8AIaCAABACgbAQIEBAAZAeDw"
+ },
+ "d080_2_rec_brew_over_ice": {
+  "value": "0BSm8AIbCAABACgbAQIEBAAZAZuR"
+ },
+ "d081_3_rec_espresso": {
+  "value": "0BSm8AMBCAABACgbAQIEBAAZAe4z"
+ },
+ "d082_3_rec_regular": {
+  "value": "0BKm8AMCGQEbAQEAtAIDBACAWA=="
+ },
+ "d083_3_rec_long_coffee": {
+  "value": "0BKm8AMDGQEBAKAbAQIDBADRuQ=="
+ },
+ "d084_3_rec_2x_espresso": {
+  "value": "0BSm8AMECAEBAFAbAQIEBAAZAemm"
+ },
+ "d085_3_rec_doppio": {
+  "value": "0BCm8AMFGQEBAHgbAQQAPcU="
+ },
+ "d086_3_rec_americano": {
+  "value": "0BWm8AMGGQEBACgPAG4bAQIDBABywQ=="
+ },
+ "d087_3_rec_cappuccino": {
+  "value": "0Bem8AMHHAIZAQEAQRsBAgMJAKoEAJh/"
+ },
+ "d088_3_rec_latte_macchiato": {
+  "value": "0Bem8AMIHAIZAQEAPBsBAgMJASIEAN40"
+ },
+ "d089_3_rec_caffelatte": {
+  "value": "0Bem8AMJHAIZAQEAPBsBAgMJAXwEAIsZ"
+ },
+ "d090_3_rec_flat_white": {
+  "value": "0Bmm8AMKDAEcAhkBAQA8GwECAwkA3AQAEEU="
+ },
+ "d091_3_rec_espr_macchiato": {
+  "value": "0Bem8AMLHAIZAQEAHhsBAgMJACgEALng"
+ },
+ "d092_3_rec_hot_milk": {
+  "value": "0BCm8AMMHAIZAQkBaBsBhEk="
+ },
+ "d093_3_rec_capp_doppio": {
+  "value": "0BWm8AMNHAIZAQEAZBsBCQCWBAAQPw=="
+ },
+ "d094_3_rec_capp_reverse": {
+  "value": "0Bmm8AMPDAEcAhkBAQBBGwECAwkAqgQAu1c="
+ },
+ "d095_3_rec_hot_water": {
+  "value": "0A6m8AMQGQEPAPobAYkl"
+ },
+ "d096_3_rec_tea": {
+  "value": "0BCm8AMWGQIPAJYbAQ0BvHw="
+ },
+ "d097_3_rec_coffee_pot": {
+  "value": "0BKm8AMXGQIBAJYbAQQAAgUmkA=="
+ },
+ "d098_3_rec_cortado": {
+  "value": "0Bmm8AMYDAEcAhkBAQAoGwECAwkAKAQAijY="
+ },
+ "d099_3_rec_long_black": {
+  "value": "0BSm8AMZCAABACgbAQIEBAAZAcOv"
+ },
+ "d100_3_rec_mug_to_go": {
+  "value": "0BSm8AMaCAABACgbAQIEBAAZAU4M"
+ },
+ "d101_3_rec_brew_over_ice": {
+  "value": "0BSm8AMbCAABACgbAQIEBAAZATVt"
+ },
+ "d102_4_rec_espresso": {
+  "value": "0BSm8AQBCAABADAbAgIEBAAZATQn"
+ },
+ "d103_4_rec_regular": {
+  "value": "0BKm8AQCGQEbAQEAtAIDBABKUA=="
+ },
+ "d104_4_rec_long_coffee": {
+  "value": "0BKm8AQDGQEBAKAbAQIDBAAbsQ=="
+ },
+ "d105_4_rec_2x_espresso": {
+  "value": "0BSm8AQECAEBAGAbAgIEBAAZAb2x"
+ },
+ "d106_4_rec_doppio": {
+  "value": "0BCm8AQFGQEBAHgbAQQAFHg="
+ },
+ "d107_4_rec_americano": {
+  "value": "0BWm8AQGGQEBACgPAG4bAQIDBAAaXg=="
+ },
+ "d108_4_rec_cappuccino": {
+  "value": "0Bem8AQHHAIZAQEAThsCAgMJAMwEAN+l"
+ },
+ "d109_4_rec_latte_macchiato": {
+  "value": "0Bem8AQIHAIZAQEASBsCAgMJAVwEAFcp"
+ },
+ "d110_4_rec_caffelatte": {
+  "value": "0Bem8AQJHAIZAQEAPBsBAgMJAXwEAHvM"
+ },
+ "d111_4_rec_flat_white": {
+  "value": "0Bmm8AQKDAEcAhkBAQA8GwECAwkA3AQAmFw="
+ },
+ "d112_4_rec_espr_macchiato": {
+  "value": "0Bem8AQLHAIZAQEAHhsBAgMJACgEAEk1"
+ },
+ "d113_4_rec_hot_milk": {
+  "value": "0BCm8AQMHAIZAQkBaBsBrfQ="
+ },
+ "d114_4_rec_capp_doppio": {
+  "value": "0BWm8AQNHAIZAQEAZBsBCQCWBAB4oA=="
+ },
+ "d115_4_rec_capp_reverse": {
+  "value": "0Bmm8AQPDAEcAhkBAQBBGwECAwkAqgQAM04="
+ },
+ "d116_4_rec_hot_water": {
+  "value": "0A6m8AQQGQEPAPobATiO"
+ },
+ "d117_4_rec_tea": {
+  "value": "0BCm8AQWGQIPAJYbAQ0BlcE="
+ },
+ "d118_4_rec_coffee_pot": {
+  "value": "0BKm8AQXGQIBAJYbAQQAAgXsmA=="
+ },
+ "d119_4_rec_cortado": {
+  "value": "0Bmm8AQYDAEcAhkBAQAoGwECAwkAKAQAAi8="
+ },
+ "d120_4_rec_long_black": {
+  "value": "0BSm8AQZCAABADAbAgIEBAAZARm7"
+ },
+ "d121_4_rec_mug_to_go": {
+  "value": "0BSm8AQaCAABADAbAgIEBAAZAZQY"
+ },
+ "d122_4_rec_brew_over_ice": {
+  "value": "0BSm8AQbCAABADAbAgIEBAAZAe95"
+ },
+ "d123_5_rec_espresso": {
+  "value": "0BSm8AUBCAABADAbAgIEBAAZAZrb"
+ },
+ "d124_5_rec_regular": {
+  "value": "0BKm8AUCGQEbAQEAtAIDBAAPMw=="
+ },
+ "d125_5_rec_long_coffee": {
+  "value": "0BKm8AUDGQEBAKAbAQIDBABe0g=="
+ },
+ "d126_5_rec_2x_espresso": {
+  "value": "0BSm8AUECAEBAGAbAgIEBAAZARNN"
+ },
+ "d127_5_rec_doppio": {
+  "value": "0BCm8AUFGQEBAHgbAQQAzDE="
+ },
+ "d128_5_rec_americano": {
+  "value": "0BWm8AUGGQEBACgPAG4bAQIDBACyeg=="
+ },
+ "d129_5_rec_cappuccino": {
+  "value": "0Bem8AUHHAIZAQEAThsCAgMJAMwEAC+U"
+ },
+ "d130_5_rec_latte_macchiato": {
+  "value": "0Bem8AUIHAIZAQEASBsCAgMJAVwEAKcY"
+ },
+ "d131_5_rec_caffelatte": {
+  "value": "0Bem8AUJHAIZAQEAPBsBAgMJAXwEAIv9"
+ },
+ "d132_5_rec_flat_white": {
+  "value": "0Bmm8AUKDAEcAhkBAQA8GwECAwkA3AQAre8="
+ },
+ "d133_5_rec_espr_macchiato": {
+  "value": "0Bem8AULHAIZAQEAHhsBAgMJACgEALkE"
+ },
+ "d134_5_rec_hot_milk": {
+  "value": "0BCm8AUMHAIZAQkBaBsBdb0="
+ },
+ "d135_5_rec_capp_doppio": {
+  "value": "0BWm8AUNHAIZAQEAZBsBCQCWBADQhA=="
+ },
+ "d136_5_rec_capp_reverse": {
+  "value": "0Bmm8AUPDAEcAhkBAQBBGwECAwkAqgQABv0="
+ },
+ "d137_5_rec_hot_water": {
+  "value": "0A6m8AUQGQEPAPobAdOt"
+ },
+ "d138_5_rec_tea": {
+  "value": "0BCm8AUWGQIPAJYbAQ0BTYg="
+ },
+ "d139_5_rec_coffee_pot": {
+  "value": "0BKm8AUXGQIBAJYbAQQAAgWp+w=="
+ },
+ "d140_5_rec_cortado": {
+  "value": "0Bmm8AUYDAEcAhkBAQAoGwECAwkAKAQAN5w="
+ },
+ "d141_5_rec_long_black": {
+  "value": "0BSm8AUZCAABADAbAgIEBAAZAbdH"
+ },
+ "d142_5_rec_mug_to_go": {
+  "value": "0BSm8AUaCAABADAbAgIEBAAZATrk"
+ },
+ "d143_5_rec_brew_over_ice": {
+  "value": "0BSm8AUbCAABADAbAgIEBAAZAUGF"
+ },
+ "d160_1_bs_recipe_01": {
+  "value": "0BCm8AHIAQAwGwICAhkBCd0="
+ },
+ "d166_2_bs_recipe_01": {
+  "value": "0BCm8ALIAQAgGwACAhkBAt8="
+ },
+ "d172_3_bs_recipe_01": {
+  "value": "0BCm8APIAQAoGwECAhkB42o="
+ },
+ "d178_4_bs_recipe_01": {
+  "value": "0BCm8ATIAQAwGwICAhkBgNM="
+ },
+ "d184_5_bs_recipe_01": {
+  "value": "0BCm8AXIAQAwGwICAhkBWJo="
+ },
+ "d200_1_cstm_recipe_01": {
+  "value": "0Bem8AHmAQAAAv8JAAAEAAwAHAAZABK3"
+ },
+ "d201_1_cstm_recipe_02": {
+  "value": "0Bem8AHnAQAAAv8JAAAEAAwAHAAZAAJV"
+ },
+ "d202_1_cstm_recipe_03": {
+  "value": "0Bem8AHoAQAAAv8JAAAEAAwAHAAZAPfr"
+ },
+ "d203_1_cstm_recipe_04": {
+  "value": "0Bem8AHpAQAAAv8JAAAEAAwAHAAZAOcJ"
+ },
+ "d204_1_cstm_recipe_05": {
+  "value": "0Bem8AHqAQAAAv8JAAAEAAwAHAAZANYv"
+ },
+ "d205_1_cstm_recipe_06": {
+  "value": "0Bem8AHrAQAAAv8JAAAEAAwAHAAZAMbN"
+ },
+ "d206_2_cstm_recipe_01": {
+  "value": "0Bem8ALmAQAAAv8JAAAEAAwAHAAZABLF"
+ },
+ "d207_2_cstm_recipe_02": {
+  "value": "0Bem8ALnAQAAAv8JAAAEAAwAHAAZAAIn"
+ },
+ "d208_2_cstm_recipe_03": {
+  "value": "0Bem8ALoAQAAAv8JAAAEAAwAHAAZAPeZ"
+ },
+ "d209_2_cstm_recipe_04": {
+  "value": "0Bem8ALpAQAAAv8JAAAEAAwAHAAZAOd7"
+ },
+ "d210_2_cstm_recipe_05": {
+  "value": "0Bem8ALqAQAAAv8JAAAEAAwAHAAZANZd"
+ },
+ "d211_2_cstm_recipe_06": {
+  "value": "0Bem8ALrAQAAAv8JAAAEAAwAHAAZAMa/"
+ },
+ "d212_3_cstm_recipe_01": {
+  "value": "0Bem8APmAQAAAv8JAAAEAAwAHAAZAOL0"
+ },
+ "d213_3_cstm_recipe_02": {
+  "value": "0Bem8APnAQAAAv8JAAAEAAwAHAAZAPIW"
+ },
+ "d214_3_cstm_recipe_03": {
+  "value": "0Bem8APoAQAAAv8JAAAEAAwAHAAZAAeo"
+ },
+ "d215_3_cstm_recipe_04": {
+  "value": "0Bem8APpAQAAAv8JAAAEAAwAHAAZABdK"
+ },
+ "d216_3_cstm_recipe_05": {
+  "value": "0Bem8APqAQAAAv8JAAAEAAwAHAAZACZs"
+ },
+ "d217_3_cstm_recipe_06": {
+  "value": "0Bem8APrAQAAAv8JAAAEAAwAHAAZADaO"
+ },
+ "d218_4_cstm_recipe_01": {
+  "value": "0Bem8ATmAQAAAv8JAAAEAAwAHAAZABIh"
+ },
+ "d219_4_cstm_recipe_02": {
+  "value": "0Bem8ATnAQAAAv8JAAAEAAwAHAAZAALD"
+ },
+ "d220_4_cstm_recipe_03": {
+  "value": "0Bem8AToAQAAAv8JAAAEAAwAHAAZAPd9"
+ },
+ "d221_4_cstm_recipe_04": {
+  "value": "0Bem8ATpAQAAAv8JAAAEAAwAHAAZAOef"
+ },
+ "d222_4_cstm_recipe_05": {
+  "value": "0Bem8ATqAQAAAv8JAAAEAAwAHAAZANa5"
+ },
+ "d223_4_cstm_recipe_06": {
+  "value": "0Bem8ATrAQAAAv8JAAAEAAwAHAAZAMZb"
+ },
+ "d224_5_cstm_recipe_01": {
+  "value": "0Bem8AXmAQAAAv8JAAAEAAwAHAAZAOIQ"
+ },
+ "d225_5_cstm_recipe_02": {
+  "value": "0Bem8AXnAQAAAv8JAAAEAAwAHAAZAPLy"
+ },
+ "d226_5_cstm_recipe_03": {
+  "value": "0Bem8AXoAQAAAv8JAAAEAAwAHAAZAAdM"
+ },
+ "d227_5_cstm_recipe_04": {
+  "value": "0Bem8AXpAQAAAv8JAAAEAAwAHAAZABeu"
+ },
+ "d228_5_cstm_recipe_05": {
+  "value": "0Bem8AXqAQAAAv8JAAAEAAwAHAAZACaI"
+ },
+ "d229_5_cstm_recipe_06": {
+  "value": "0Bem8AXrAQAAAv8JAAAEAAwAHAAZADZq"
+ },
+ "d250_beansystem_0": {
+  "value": "0DS68AAAAEIAZQBhAG4AIAAxAAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d251_beansystem_1": {
+  "value": "0DS68AEAAEIAZQBhAG4AIAAyAAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d252_beansystem_2": {
+  "value": "0DS68AIAAEIAZQBhAG4AIAAzAAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d253_beansystem_3": {
+  "value": "0DS68AMAAEIAZQBhAG4AIAA0AAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d254_beansystem_4": {
+  "value": "0DS68AQAAEIAZQBhAG4AIAA1AAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d255_beansystem_5": {
+  "value": "0DS68AUAAEIAZQBhAG4AIAA2AAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d256_beansystem_6": {
+  "value": "0DS68AYAAEIAZQBhAG4AIAA3AAAAAAAAAAAAAAAAAAAAAAAA"
+ },
+ "d260_beansystem_sync_par": {
+  "value": "0C+hDwH0AAAALAAAGgAAACnqAAAg0AAAAAEAAAIpAAAAAAAAAA"
+ },
+ "d261_1_rec_priority": {
+  "value": "0Bmo8AHIBQgHAwYMEAQWAQsXAgkKDQ8YyUs="
+ },
+ "d262_2_rec_priority": {
+  "value": "0Bmo8ALICAcQFgwLAQMECQINFwoGBQ8Yxqo="
+ },
+ "d263_3_rec_priority": {
+  "value": "0Bmo8APIAQQDBwkXCAoGBQsMAg0PGBAWoKg="
+ },
+ "d264_4_rec_priority": {
+  "value": "0Bmo8ATIBQgHAwYMEAQWAQsXAgkKDQ8YKjQ="
+ },
+ "d265_5_rec_priority": {
+  "value": "0Bmo8AXIBQgHAwYMEAQWAQsXAgkKDQ8YH4c="
+ },
+ "d270_serialnumber": {
+  "value": "0BuhDwDNMDAwMDAwWFgwMDAwMDAwMDAwMAByWA=="
+ },
+ "d280_mchn_sett_pin": {
+  "value": "0AuVDwDSAAAXDojT"
+ },
+ "d281_mchn_sett_temp": {
+  "value": "0AuVDwA9AAAAA51v"
+ },
+ "d282_mchn_sett_aoff": {
+  "value": "0AuVDwA+AAAAAVP/"
+ },
+ "d283_mchn_sett_water": {
+  "value": "0AuVDwAyAAAAAMj1"
+ },
+ "d284_mchn_sett_user_conf": {
+  "value": "0AuVDwA/AAAAHSoT"
+ },
+ "d285_mchn_sett_radio_conf": {
+  "value": "0AuVDwAtAAAAA5k1"
+ },
+ "d302_monitor": {
+  "value": "0BJ1DwAAAAQABwAAAAAAAAB7lmnoxeg="
+ },
+ "d303_monitor_extended": {
+  "value": "None"
+ },
+ "d500_machine_sett_factory_0": {
+  "value": 99
+ },
+ "d501_machine_sett_factory_1": {
+  "value": 0
+ },
+ "d510_ground_cnt_percentage": {
+  "value": 82
+ },
+ "d511_ground_cnt_pod_space": {
+  "value": 2
+ },
+ "d512_percentage_to_deca": {
+  "value": 66
+ },
+ "d513_percentage_usage_fltr": {
+  "value": 0
+ },
+ "d514_nbr_cups": {
+  "value": 0
+ },
+ "d520_radio_conf": {
+  "value": 3
+ },
+ "d521_radio_mac_addr0": {
+  "value": 0
+ },
+ "d522_radio_mac_addr1": {
+  "value": 0
+ },
+ "d523_radio_mac_addr2": {
+  "value": 0
+ },
+ "d524_ix_calcare_alm_qty": {
+  "value": 0
+ },
+ "d525_max_pos": {
+  "value": 0
+ },
+ "d526_ix_coffee_temp": {
+  "value": 0
+ },
+ "d527_ix_turn_off_time": {
+  "value": 0
+ },
+ "d528_user_conf": {
+  "value": 0
+ },
+ "d530_machine_conf": {
+  "value": 0
+ },
+ "d531_bt_first_connection": {
+  "value": 0
+ },
+ "d532_turn_on_wash_en": {
+  "value": 1
+ },
+ "d533_active_minutes": {
+  "value": 0
+ },
+ "d534_inertia_1": {
+  "value": 0
+ },
+ "d535_grinder_qerror_1": {
+  "value": 29000
+ },
+ "d536_absolute_position_mc1": {
+  "value": 32000
+ },
+ "d537_step_to_switch_mc1": {
+  "value": 1008
+ },
+ "d538_default_pos_mc1": {
+  "value": 776
+ },
+ "d539_default_pos_mc1set": {
+  "value": 0
+ },
+ "d540_mc1_granulometry": {
+  "value": 2056
+ },
+ "d550_water_calc_qty": {
+  "value": 3315920
+ },
+ "d551_cnt_coffee_fondi": {
+  "value": 1927
+ },
+ "d552_cnt_calc_tot": {
+  "value": 0
+ },
+ "d553_water_tot_qty": {
+  "value": 0
+ },
+ "d554_cnt_filter_tot": {
+  "value": 0
+ },
+ "d555_water_filter_qty": {
+  "value": 0
+ },
+ "d556_water_hardness": {
+  "value": 0
+ },
+ "d557_milk_cln_cnt": {
+  "value": 0
+ },
+ "d558_bev_cnt_desc_on": {
+  "value": 16
+ },
+ "d559_num_ix_coffee_temp": {
+  "value": 0
+ },
+ "d560_versione_sw": {
+  "value": 12
+ },
+ "d561_machine_model": {
+  "value": 859
+ },
+ "d562_versione_sw_ui": {
+  "value": 12
+ },
+ "d563_type_board_ui": {
+  "value": 1704641
+ },
+ "d565_product_key": {
+  "value": 1553
+ },
+ "d566_bt_sn_write": {
+  "value": 0
+ },
+ "d567_select_steamer": {
+  "value": 0
+ },
+ "d568_select_heater": {
+  "value": 0
+ },
+ "d569_bt_sw_version": {
+  "value": 131072
+ },
+ "d570_bt_micro_sw_version": {
+  "value": 0
+ },
+ "d571_stepper_st_recovery_a": {
+  "value": 0
+ },
+ "d572_stepper_st_recovery_b": {
+  "value": 0
+ },
+ "d700_tot_bev_b": {
+  "value": 2397
+ },
+ "d701_tot_bev_bw": {
+  "value": 691
+ },
+ "d702_tot_bev_other": {
+  "value": 139
+ },
+ "d703_tot_bev_w": {
+  "value": 130
+ },
+ "d704_tot_bev_espressi": {
+  "value": 2079
+ },
+ "d705_tot_id1_espr": {
+  "value": 94
+ },
+ "d706_tot_id2_coffee": {
+  "value": 6
+ },
+ "d707_tot_id3_long": {
+  "value": 133
+ },
+ "d708_tot_id5_doppio_p": {
+  "value": 83
+ },
+ "d709_id6_americano": {
+  "value": 96
+ },
+ "d710_tot_id7_capp": {
+  "value": 200
+ },
+ "d711_id8_lattmacc": {
+  "value": 462
+ },
+ "d712_id9_cafflatt": {
+  "value": 3
+ },
+ "d713_id10_flatwhite": {
+  "value": 0
+ },
+ "d714_id11_esprmacc": {
+  "value": 24
+ },
+ "d715_id12_hotmilk": {
+  "value": 130
+ },
+ "d716_id13_cappdoppio_p": {
+  "value": 2
+ },
+ "d717_id15_caprev": {
+  "value": 0
+ },
+ "d718_id16_hotwater": {
+  "value": 0
+ },
+ "d719_id22_tea": {
+  "value": 94
+ },
+ "d720_tot_id23_coffee_pot": {
+  "value": 1
+ },
+ "d721_id200_bs_1": {
+  "value": 0
+ },
+ "d722_id201_bs_2": {
+  "value": 0
+ },
+ "d723_id202_bs_3": {
+  "value": 0
+ },
+ "d724_id203_bs_4": {
+  "value": 0
+ },
+ "d725_id204_bs_5": {
+  "value": 1985
+ },
+ "d726_id205_bs_6": {
+  "value": 0
+ },
+ "d727_id24_cortado": {
+  "value": 0
+ },
+ "d728_id25_long_black": {
+  "value": 0
+ },
+ "d729_id26_travel_mug": {
+  "value": 0
+ },
+ "d730_tot_id27_brew_over_ice": {
+  "value": 0
+ },
+ "d731_pregr_coff_cnt": {
+  "value": 0
+ },
+ "d732_taste_b_bw": {
+  "value": 0
+ },
+ "d733_taste_espressi": {
+  "value": 0
+ },
+ "d734_taste_coffee": {
+  "value": 0
+ },
+ "d735_b_water_qty": {
+  "value": 0
+ },
+ "d736_bw_coff_water_qty": {
+  "value": 0
+ },
+ "d737_bw_milk_time_qty": {
+  "value": 0
+ },
+ "d738_espressi_water_qty": {
+  "value": 0
+ },
+ "d739_espr_water_qty": {
+  "value": 0
+ },
+ "d740_id2_coffee_water_qty": {
+  "value": 0
+ },
+ "d741_tot_custom_b_bw": {
+  "value": 0
+ },
+ "d742_tot_bev_no_original": {
+  "value": 0
+ },
+ "d743_tot_bev_profile_std_p1": {
+  "value": 0
+ },
+ "d744_tot_bev_profile_other": {
+  "value": 0
+ },
+ "d745_profile_set": {
+  "value": 0
+ },
+ "d746_tot_bev_bBwNoMySize": {
+  "value": 0
+ },
+ "d747_bev_abort_cnt": {
+  "value": 0
+ },
+ "d748_bev_2x_cnt": {
+  "value": 0
+ },
+ "d820_water_heaterCalcRelQty": {
+  "value": 2966060
+ },
+ "d821_water_steamCalcRelQty": {
+  "value": 349860
+ },
+ "d822_water_heaterCalcAbsQty": {
+  "value": 10788040
+ },
+ "d823_water_steamCalcAbsQty": {
+  "value": 8599040
+ },
+ "d824_water_misuseCalcAbsQty": {
+  "value": 1071160
+ },
+ "d825_descale_status": {
+  "value": 0
+ },
+ "d826_last_4_water_calc_qty": {
+  "value": 3289915
+ },
+ "d827_last_4_calc_thrshld": {
+  "value": 3289650
+ },
+ "d828_gen_water_cnt_1": {
+  "value": 0
+ },
+ "d829_gen_water_cnt_2": {
+  "value": 0
+ },
+ "d830_gen_water_cnt_3": {
+  "value": 0
+ },
+ "d831_gen_water_cnt_4": {
+  "value": 0
+ },
+ "d832_gen_water_cnt_5": {
+  "value": 0
+ },
+ "d833_gen_water_cnt_6": {
+  "value": 0
+ },
+ "d834_gen_water_cnt_7": {
+  "value": 0
+ },
+ "d835_gen_water_cnt_8": {
+  "value": 0
+ },
+ "data_request": {
+  "value": "DQap8AHXwGnoxe4="
+ },
+ "data_response": {
+  "value": "0Aep8AEAOzxp6MXw"
+ },
+ "device_connected": {
+  "value": "1776862694"
+ },
+ "software_version": {
+  "value": "Millcore_demo 2.0.0 Jun 18 2020 15:41:06"
+ }
+}

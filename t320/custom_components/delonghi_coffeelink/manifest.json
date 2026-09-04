@@ -1,0 +1,18 @@
+{
+  "domain": "delonghi_coffeelink",
+  "name": "De'Longhi Coffee Link",
+  "codeowners": [
+    "@actabi"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/actabi/delonghi_coffeelink",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/actabi/delonghi_coffeelink/issues",
+  "loggers": [
+    "custom_components.delonghi_coffeelink"
+  ],
+  "requirements": [],
+  "version": "0.3.20"
+}

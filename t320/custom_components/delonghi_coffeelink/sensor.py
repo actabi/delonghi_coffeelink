@@ -110,7 +110,6 @@ async def async_setup_entry(
         entities.append(DelonghiConnectionSensor(coord))
         entities.append(DelonghiLastConnectedSensor(coord))
         entities.append(DelonghiMachineStatusSensor(coord))
-        entities.append(DelonghiMonitorPublishedSensor(coord))
         entities.append(DelonghiLastCommandSensor(coord))
         if coord.profile.uses_cloud_session and APP_ID_PROPERTY in (coord.data or {}):
             entities.append(DelonghiCloudSessionAppIdSensor(coord))
@@ -268,34 +267,6 @@ class DelonghiLastConnectedSensor(_Base):
         return parsed
 
 
-class DelonghiMonitorPublishedSensor(_Base):
-    """When the machine last PUBLISHED its status, not when we last read it.
-
-    Diagnostic, and the one number that separates "the machine is resting" from
-    "the machine has gone quiet". Machine Status looks identical either way -
-    that is the whole problem it exists to expose - so this carries Ayla's own
-    ``data_updated_at`` for the monitor datapoint, which the integration already
-    receives on every poll and used to discard.
-
-    Pair it with an alert: a value drifting past MONITOR_MAX_AGE means the cloud
-    link has wedged, and no amount of successful polling will say so.
-    """
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, coord: DelonghiCoordinator) -> None:
-        super().__init__(coord, "monitor_published", "mdi:cloud-clock-outline")
-        self._attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    @property
-    def native_value(self) -> Any:
-        published = self.coordinator.monitor_updated_at
-        # TIMESTAMP rejects a naive datetime on every state write.
-        if published is None or published.tzinfo is None:
-            return None
-        return published
-
-
 class DelonghiMachineStatusSensor(_Base):
     """Machine operational state (standby, ready, rinsing, ...) decoded from the
     monitor blob the machine publishes. Which datapoint carries it depends on the
@@ -314,11 +285,6 @@ class DelonghiMachineStatusSensor(_Base):
         monitor = self.coordinator.monitor or {}
         if "error" in monitor:
             return "unknown"
-        # A blob the machine stopped publishing days ago is not a status. Saying
-        # `standby` here is what let a wedged cloud link look like a machine at
-        # rest - every entity available, nothing to alert on, automations silent.
-        if self.coordinator.monitor_is_stale:
-            return None
         return monitor.get("status_name")
 
     @property
@@ -328,10 +294,6 @@ class DelonghiMachineStatusSensor(_Base):
         for key in ("status", "progress", "action", "accessory", "error"):
             if key in monitor:
                 attrs[key] = monitor[key]
-        published = self.coordinator.monitor_updated_at
-        if published is not None:
-            attrs["last_published"] = published.isoformat()
-            attrs["stale"] = self.coordinator.monitor_is_stale
         # Surface the raw switches/alarms bitfields as hex for troubleshooting,
         # but only on ECAM models: the monitor parser may fill these keys for any
         # model, so this uses_cloud_session gate is what keeps them off the Soul.
