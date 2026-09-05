@@ -22,12 +22,20 @@ Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla N
 
 - 21 beverage buttons (Espresso, Cappuccino, Latte Macchiato, Hot Water, Tea, etc.)
 - **Wake** and **Standby** buttons (power the machine on / off remotely)
-- Counters sensors (total beverages, per-drink counters, descale status)
+- Counter sensors: lifetime totals split the way the machine actually splits
+  them (black / coffee+milk / milk-only / other), per-drink counters, water and
+  filter volumes in litres, descale status
 - **Machine Status** (standby, ready, rinsing, dispensing...) and **Connection
   Status** sensors, plus **Last Connected** - when the machine established its
   current cloud connection
 - Generic Stop button
 - Services for raw binary command injection (advanced use)
+- Reads the machine's **own recipe catalogue** from the properties it already
+  publishes - every parameter of every drink on every profile, the editable
+  min/default/max ranges the machine itself declares, the saved-recipe slots and
+  the bean-system drink, plus each profile's ordered short list. Currently used
+  to keep the diagnostics and the learn-and-replay path honest; it creates no
+  entities yet.
 
 ### When the machine is unreachable
 
@@ -135,7 +143,7 @@ This integration implements the Coffee Link authentication and command protocol:
 1. Authenticate to Gigya (SAP Customer Data Cloud) identity service
 2. Request a signed JWT (HMAC-SHA1 over the Gigya session)
 3. Exchange the JWT for an Ayla Networks SSO token
-4. Poll Ayla Networks IoT cloud for 312 device properties
+4. Poll Ayla Networks IoT cloud for the device properties (312 on the reference machine)
 5. Send binary commands via the `data_request` property (base64-encoded)
 
 Beverage command format - **PrimaDonna Soul** (fixed 18 bytes):
@@ -193,7 +201,7 @@ If you'd like **first-class support** for your model (so it's recognised by name
 For each drink you care about, **start it from the official app** with Home Assistant running, then copy the **Attributes** of the `...Last Captured Command` sensor (Developer Tools → States). Do the same for **power-on**. Each block shows `style`, `beverage_id`, the full `recipe`/`hex`, `crc_valid`, and the device signature - exactly what's needed.
 
 **3. The recipes the machine stores** (for the optional "zero-touch" path)
-Press the **Dump Recipe Datapoints** diagnostic button and paste the logged block (it's read-only - it sends nothing to the machine).
+Press the **Dump Recipe Datapoints** diagnostic button and paste the logged block (it's read-only - it sends nothing to the machine). It selects datapoints by *blob family*, so it also catches your saved-recipe and bean-system recipes, and it deliberately leaves out the machine's serial number, its settings PIN and any name you typed in - the block is safe to paste into a public issue.
 
 **4. Does it work after teaching?**
 Tell us whether the Home Assistant buttons brew/power the machine after you've triggered them once from the app (yes/no per drink, and whether the machine was already on or in standby).

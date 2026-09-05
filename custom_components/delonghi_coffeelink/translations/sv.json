@@ -1,0 +1,335 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DeLonghi Coffee Link",
+        "description": "Ange inloggningsuppgifterna för ditt Coffee Link-konto. Det är samma som du använder i Coffee Link-appen.",
+        "data": {
+          "email": "E-post",
+          "password": "Lösenord"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ogiltig e-postadress eller ogiltigt lösenord.",
+      "cannot_connect": "Det gick inte att ansluta till De'Longhis moln.",
+      "no_devices": "Inga De'Longhi-enheter hittades på det här kontot.",
+      "unknown": "Oväntat fel."
+    },
+    "abort": {
+      "already_configured": "Det här kontot är redan konfigurerat."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_beverages": {
+        "name": "Svarta drycker totalt"
+      },
+      "total_espresso": {
+        "name": "Espresso totalt"
+      },
+      "total_milk_drinks": {
+        "name": "Kaffe- och mjölkdrycker totalt"
+      },
+      "total_water": {
+        "name": "Rena mjölkdrycker totalt"
+      },
+      "total_espresso_alt": {
+        "name": "Espresso (alternativ) totalt"
+      },
+      "total_coffee": {
+        "name": "Kaffe totalt"
+      },
+      "total_long_coffee": {
+        "name": "Långt kaffe totalt"
+      },
+      "total_doppio": {
+        "name": "Doppio+ totalt"
+      },
+      "total_americano": {
+        "name": "Americano totalt"
+      },
+      "total_cappuccino": {
+        "name": "Cappuccino totalt"
+      },
+      "total_latte_macchiato": {
+        "name": "Latte Macchiato totalt"
+      },
+      "total_caffelatte": {
+        "name": "Caffè Latte totalt"
+      },
+      "total_flat_white": {
+        "name": "Flat White totalt"
+      },
+      "total_espresso_macchiato": {
+        "name": "Espresso Macchiato totalt"
+      },
+      "total_hot_milk": {
+        "name": "Varm mjölk totalt"
+      },
+      "total_cappuccino_doppio": {
+        "name": "Cappuccino Doppio+ totalt"
+      },
+      "total_cappuccino_reverse": {
+        "name": "Cappuccino Reverse totalt"
+      },
+      "total_hot_water": {
+        "name": "Hett vatten totalt"
+      },
+      "total_tea": {
+        "name": "Te totalt"
+      },
+      "total_coffee_pot": {
+        "name": "Kaffekannor totalt"
+      },
+      "total_brew_over_ice": {
+        "name": "Brew Over Ice totalt"
+      },
+      "total_mug_hot": {
+        "name": "Varma muggdrycker totalt"
+      },
+      "total_mug_cold": {
+        "name": "Kalla muggdrycker totalt"
+      },
+      "total_iced_bev": {
+        "name": "Isdrycker totalt"
+      },
+      "total_mug_bev": {
+        "name": "Muggdrycker totalt"
+      },
+      "total_mug_iced_bev": {
+        "name": "Isade muggdrycker totalt"
+      },
+      "total_cold_brew_bev": {
+        "name": "Cold brew-drycker totalt"
+      },
+      "grounds_counter": {
+        "name": "Sumpräknare"
+      },
+      "total_descales": {
+        "name": "Avkalkningar totalt"
+      },
+      "water_total_quantity": {
+        "name": "Total vattenmängd"
+      },
+      "total_filters_used": {
+        "name": "Förbrukade filter totalt"
+      },
+      "water_filter_quantity": {
+        "name": "Filtrerad vattenmängd"
+      },
+      "descale_status": {
+        "name": "Avkalkningsstatus"
+      },
+      "water_hardness": {
+        "name": "Vattenhårdhet"
+      },
+      "software_version": {
+        "name": "Programvaruversion"
+      },
+      "last_connected": {
+        "name": "Senast ansluten"
+      },
+      "connection_status": {
+        "name": "Molnanslutning",
+        "state": {
+          "online": "Ansluten",
+          "offline": "Frånkopplad",
+          "unknown": "Okänd"
+        }
+      },
+      "machine_status": {
+        "name": "Maskinstatus",
+        "state": {
+          "standby": "Standby",
+          "waking_up": "Startar",
+          "going_to_sleep": "Går till standby",
+          "descaling": "Avkalkar",
+          "preparing_steam": "Skapar ånga",
+          "recovering": "Värmer upp",
+          "ready": "Redo",
+          "rinsing": "Sköljer",
+          "preparing_milk": "Bereder mjölk",
+          "dispensing_hot_water": "Tappar hett vatten",
+          "cleaning_milk": "Rengör mjölksystemet",
+          "preparing_chocolate": "Bereder choklad",
+          "preparing_milk_alt": "Bereder mjölk",
+          "unknown": "Okänd"
+        }
+      },
+      "cloud_session_app_id": {
+        "name": "Molnsessionens app_id"
+      },
+      "last_captured_command": {
+        "name": "Senast fångade kommando"
+      },
+      "total_other_beverages": {
+        "name": "Övriga drycker totalt"
+      },
+      "total_cortado": {
+        "name": "Cortado totalt"
+      },
+      "total_long_black": {
+        "name": "Long Black totalt"
+      },
+      "total_mug_to_go": {
+        "name": "Mugg att ta med totalt"
+      }
+    },
+    "button": {
+      "start_espresso": {
+        "name": "Espresso"
+      },
+      "start_coffee": {
+        "name": "Kaffe"
+      },
+      "start_long_coffee": {
+        "name": "Långt kaffe"
+      },
+      "start_double_espresso": {
+        "name": "Dubbel espresso"
+      },
+      "start_doppio": {
+        "name": "Doppio+"
+      },
+      "start_americano": {
+        "name": "Americano"
+      },
+      "start_cappuccino": {
+        "name": "Cappuccino"
+      },
+      "start_latte_macchiato": {
+        "name": "Latte Macchiato"
+      },
+      "start_caffelatte": {
+        "name": "Caffè Latte"
+      },
+      "start_flat_white": {
+        "name": "Flat White"
+      },
+      "start_espresso_macchiato": {
+        "name": "Espresso Macchiato"
+      },
+      "start_hot_milk": {
+        "name": "Varm mjölk"
+      },
+      "start_cappuccino_doppio": {
+        "name": "Cappuccino Doppio+"
+      },
+      "start_cappuccino_reverse": {
+        "name": "Cappuccino Reverse"
+      },
+      "start_hot_water": {
+        "name": "Hett vatten"
+      },
+      "start_tea": {
+        "name": "Te"
+      },
+      "start_coffee_pot": {
+        "name": "Kaffekanna"
+      },
+      "start_cortado": {
+        "name": "Cortado"
+      },
+      "start_long_black": {
+        "name": "Long Black"
+      },
+      "start_mug_to_go": {
+        "name": "Resemugg"
+      },
+      "start_brew_over_ice": {
+        "name": "Brew Over Ice"
+      },
+      "wake": {
+        "name": "Slå på"
+      },
+      "standby": {
+        "name": "Standby"
+      },
+      "stop": {
+        "name": "Stoppa"
+      },
+      "dump_recipes": {
+        "name": "Logga receptdatapunkter"
+      }
+    },
+    "binary_sensor": {
+      "water_tank_empty": {
+        "name": "Vattentanken tom"
+      },
+      "waste_container_full": {
+        "name": "Sumpbehållaren full"
+      },
+      "decalcification_needed": {
+        "name": "Avkalkning behövs"
+      },
+      "filter_change_needed": {
+        "name": "Filterbyte behövs"
+      }
+    }
+  },
+  "services": {
+    "start_beverage": {
+      "name": "Starta dryck",
+      "description": "Startar tillagningen av en dryck på den valda De'Longhi-kaffemaskinen.",
+      "fields": {
+        "beverage": {
+          "name": "Dryck",
+          "description": "Dryckesrecept som ska tillagas."
+        }
+      }
+    },
+    "stop_beverage": {
+      "name": "Stoppa dryck",
+      "description": "Stoppar tillagningen av den valda drycken.",
+      "fields": {
+        "beverage": {
+          "name": "Dryck",
+          "description": "Dryck vars tillagning ska stoppas."
+        }
+      }
+    },
+    "send_raw_command": {
+      "name": "Skicka rått kommando",
+      "description": "Skickar ett base64-kodat binärkommando till kaffemaskinen (avancerad användning).",
+      "fields": {
+        "value_base64": {
+          "name": "Kommando (base64)",
+          "description": "Base64-representation av kommandots byte."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "espresso": "Espresso",
+        "coffee": "Kaffe",
+        "long_coffee": "Långt kaffe",
+        "double_espresso": "Dubbel espresso",
+        "doppio": "Doppio+",
+        "americano": "Americano",
+        "cappuccino": "Cappuccino",
+        "latte_macchiato": "Latte Macchiato",
+        "caffelatte": "Caffè Latte",
+        "flat_white": "Flat White",
+        "espresso_macchiato": "Espresso Macchiato",
+        "hot_milk": "Varm mjölk",
+        "cappuccino_doppio": "Cappuccino Doppio+",
+        "cappuccino_reverse": "Cappuccino Reverse",
+        "hot_water": "Hett vatten",
+        "tea": "Te",
+        "coffee_pot": "Kaffekanna",
+        "cortado": "Cortado",
+        "long_black": "Long Black",
+        "mug_to_go": "Resemugg",
+        "brew_over_ice": "Brew Over Ice"
+      }
+    }
+  },
+  "exceptions": {
+    "machine_offline": {
+      "message": "{name} är offline i De'Longhis moln och kan inte ta emot kommandon. Kontrollera att maskinen har ström och är ansluten till Wi-Fi (Coffee Link-appen) och försök igen."
+    }
+  }
+}

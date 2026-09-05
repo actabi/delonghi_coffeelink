@@ -74,6 +74,35 @@ CMD_RESPONSE_PREFIX = 0xd0  # Machine -> app
 CMD_LENGTH = 0x0d       # 13 bytes payload
 CMD_FAMILY_BREW = bytes([0x83, 0xf0])  # Brew beverage command family
 
+# Machine->app blob families. The machine wraps almost everything it stores in
+# the same `d0 <len> <family 2B> ... <crc16>` envelope, so the family bytes -
+# never the property name, which differs per model - say what a datapoint is.
+# See catalog.py for the grammar.
+BLOB_FAMILY_DESCRIPTOR = bytes([0xb0, 0xf0])       # factory min/default/max
+BLOB_FAMILY_PROFILE_RECIPE = bytes([0xa6, 0xf0])   # per-profile current values
+BLOB_FAMILY_PRIORITY = bytes([0xa8, 0xf0])         # per-profile ordered short list
+BLOB_FAMILY_PROFILE_NAMES = bytes([0xa4, 0xf0])
+BLOB_FAMILY_CUSTOM_NAMES = bytes([0xaa, 0xf0])
+BLOB_FAMILY_BEAN_NAMES = bytes([0xba, 0xf0])
+
+# The families that carry text the household typed in. Their structure is safe
+# to log; their content is a first name.
+TEXT_BLOB_FAMILIES = frozenset(
+    {BLOB_FAMILY_PROFILE_NAMES, BLOB_FAMILY_CUSTOM_NAMES, BLOB_FAMILY_BEAN_NAMES}
+)
+# The families the recipe diagnostic may render. Deliberately NOT the whole
+# 0xd0 envelope: the serial number (family a1 0f), the settings PIN (95 0f),
+# the monitor blob (75 0f) and the response channel (a9 f0) wear it too, and
+# that dump is meant to be pasted into public issue reports.
+DUMPABLE_BLOB_FAMILIES = frozenset(
+    {
+        BLOB_FAMILY_DESCRIPTOR,
+        BLOB_FAMILY_PROFILE_RECIPE,
+        BLOB_FAMILY_PRIORITY,
+        *TEXT_BLOB_FAMILIES,
+    }
+)
+
 # Eletta Explore (oem_model=DL-striker-cb) beverage frames carry a variable
 # length recipe block terminated by this 2-byte trailer, then the CRC. The Soul
 # (DL-millcore) frame has no trailer (fixed 6-byte recipe). See command_builder.
@@ -173,10 +202,18 @@ BEVERAGES = [
 #   - PrimaDonna Soul (DL-millcore): d700_tot_bev_b, d701_tot_bev_bw, d703_tot_bev_w, d825_descale_status
 #   - Eletta Explore (DL-striker-cb): d701_tot_bev_b (no milk/water/descale equivalents exposed)
 COUNTER_SENSORS = [
-    (["d700_tot_bev_b", "d701_tot_bev_b"], "total_beverages",       "Total Beverages",       "mdi:counter"),
+    # The b / bw / w / other suffixes are BLACK / BLACK+WHITE / WHITE / OTHER --
+    # not "beverages" / "milk drinks" / "water". Verified by arithmetic against a
+    # live PrimaDonna Soul (2026-09-01): d700 == espresso 4 + coffee 4633 +
+    # doppio 1 == 4638 exactly, and d703 == hot_milk == 24 exactly. d700 is
+    # therefore NOT the machine's lifetime total; that is d700 + d701 + d703 +
+    # d702, which on the reference machine is 4917 against a "Total Beverages"
+    # sensor reading 4638.
+    (["d700_tot_bev_b", "d701_tot_bev_b"], "total_beverages",       "Total Black Beverages", "mdi:counter"),
+    (["d702_tot_bev_other"],               "total_other_beverages", "Total Other Beverages", "mdi:counter"),
     (["d704_tot_bev_espressi"],            "total_espresso",        "Total Espresso",        "mdi:coffee"),
-    (["d701_tot_bev_bw"],                  "total_milk_drinks",     "Total Milk Drinks",     "mdi:cup"),
-    (["d703_tot_bev_w"],                   "total_water",           "Total Water",           "mdi:water"),
+    (["d701_tot_bev_bw"],                  "total_milk_drinks",     "Total Coffee + Milk Beverages", "mdi:cup"),
+    (["d703_tot_bev_w"],                   "total_water",           "Total Milk-Only Beverages", "mdi:cup-outline"),
     (["d705_tot_id1_espr"],                "total_espresso_alt",    "Total Espresso Alt",    "mdi:coffee"),
     (["d706_tot_id2_coffee"],              "total_coffee",          "Total Coffee",          "mdi:coffee"),
     (["d707_tot_id3_long"],                "total_long_coffee",     "Total Long Coffee",     "mdi:coffee"),
@@ -193,7 +230,20 @@ COUNTER_SENSORS = [
     (["d718_id16_hotwater"],               "total_hot_water",       "Total Hot Water",       "mdi:water"),
     (["d719_id22_tea"],                    "total_tea",             "Total Tea",             "mdi:tea"),
     (["d720_tot_id23_coffee_pot"],         "total_coffee_pot",      "Total Coffee Pot",      "mdi:coffee-maker"),
+    # ids 24/25/26 have buttons in BEVERAGES and counters on the machine, but were
+    # never exposed - every other id from 1 to 27 was. Confirmed against a live
+    # PrimaDonna Soul, which publishes all three (id26 is the machine's name for
+    # the Mug to Go beverage, 0x1a).
+    (["d727_id24_cortado"],                "total_cortado",         "Total Cortado",         "mdi:coffee"),
+    (["d728_id25_long_black"],             "total_long_black",      "Total Long Black",      "mdi:coffee"),
+    (["d729_id26_travel_mug"],             "total_mug_to_go",       "Total Mug to Go",       "mdi:coffee-to-go"),
     (["d730_tot_id27_brew_over_ice"],      "total_brew_over_ice",   "Total Brew Over Ice",   "mdi:coffee"),
+    # WARNING: the d-numbers below are NOT stable across models. On the reference
+    # PrimaDonna Soul these six numbers carry entirely different datapoints -
+    # d731_pregr_coff_cnt, d732_taste_b_bw, d735_b_water_qty,
+    # d736_bw_coff_water_qty, d737_bw_milk_time_qty, d738_espressi_water_qty.
+    # Matching is by EXACT full name, which is the only reason none of them are
+    # picked up and mislabelled. Never relax this to a prefix or a number.
     (["d731_tot_mug_hot"],                 "total_mug_hot",         "Total Mug Hot",         "mdi:coffee-to-go"),
     (["d732_tot_mug_cold"],                "total_mug_cold",        "Total Mug Cold",        "mdi:coffee-to-go"),
     (["d735_iced_bev"],                    "total_iced_bev",        "Total Iced Beverages",  "mdi:snowflake"),
@@ -221,9 +271,8 @@ COUNTER_SENSORS = [
 MEASUREMENT_WATER_LITERS = "water_liters"
 
 # De'Longhi machines report water volumes in millilitres, while Home Assistant's
-# water device class works in litres. Sources: DeLonghi's own statistics sheet
-# is in litres, sk7n4k3d/delonghi-ha applies scale=0.001 to the same datapoints,
-# and PyDeLonghiAPI derives lifetime litres as d553 / 1000 (see issue #19).
+# water device class works in litres. Confirmed against De'Longhi's own
+# statistics sheet, which is denominated in litres (see issue #19).
 COUNTER_MEASUREMENTS: dict[str, str] = {
     "water_total_quantity": MEASUREMENT_WATER_LITERS,
     "water_filter_quantity": MEASUREMENT_WATER_LITERS,

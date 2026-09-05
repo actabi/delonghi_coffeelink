@@ -34,6 +34,12 @@ from .command_builder import (
     summarize_decoded,
     validate_replayed_wake_frame,
 )
+from .catalog import (
+    build_catalog,
+    catalog_beverage_ids,
+    catalog_fingerprint,
+    catalog_summary,
+)
 from .const import (
     ACTION_STOP,
     APP_ID_PROPERTY,
@@ -140,6 +146,12 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Status sensor; which datapoint it comes from is resolved per model
         # (see MONITOR_PROPERTY_CANDIDATES). Empty dict until a blob parses.
         self.monitor: dict[str, Any] = {}
+        # The machine's own beverage catalogue, parsed from the recipe datapoints
+        # already present in every poll (see catalog.py). Read-only for now: it
+        # widens the learn gate and feeds the diagnostic dump, and creates no
+        # entities. ``None`` until the first poll produces readable blobs.
+        self.catalog: dict[str, Any] | None = None
+        self._catalog_fingerprint: tuple | None = None
         self._store: Store = Store(
             hass, RECIPE_STORE_VERSION, f"{DOMAIN}_recipes_{device.dsn}"
         )
@@ -178,6 +190,9 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.connected_property = self._detect_property(
                     props, CONNECTED_PROPERTY_CANDIDATES, "connected", required=False
                 )
+            # Before sniffing: the learn gate consults the catalogue, so a frame
+            # captured on this very poll must be able to see the ids it declares.
+            self._update_catalog(props)
             self._sniff_app_traffic(props)
             self._update_monitor(props)
             self._update_session_from_props(props)
@@ -294,6 +309,48 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if value is not None:
                 decoded.append((candidate, parse_monitor_b64(value)))
         return decoded
+
+    def _update_catalog(self, props: dict[str, Any]) -> None:
+        """Rebuild the machine's beverage catalogue when its recipe blobs change.
+
+        Pure parse of properties already in hand - no extra request, no protocol
+        traffic. Recipes only change when someone edits one on the machine or in
+        the app, so a key over the catalogue datapoints (and only those, see
+        ``catalog_fingerprint``) keeps the ~4 ms parse off every poll where
+        nothing moved. The key is the values themselves, not their hash: a hash
+        collision would freeze the catalogue silently, which is the one failure
+        mode not worth trading for a few bytes.
+
+        Like the monitor decode, this is diagnostic-grade: it must never be able
+        to break a poll, so any unexpected failure keeps the previous catalogue.
+        """
+        try:
+            fingerprint = catalog_fingerprint(props)
+            if fingerprint == self._catalog_fingerprint and self.catalog is not None:
+                return
+            catalog = build_catalog(props)
+            if catalog["source"] == "empty":
+                # Nothing readable this time: keep whatever we had. A blank poll
+                # must never look like a machine that lost its recipes.
+                if self.catalog is None:
+                    _LOGGER.debug(
+                        "No machine beverage catalogue yet for dsn=%s "
+                        "(no readable recipe blobs in %d properties)",
+                        self.device.dsn,
+                        len(props),
+                    )
+                return
+            self._catalog_fingerprint = fingerprint
+            first = self.catalog is None
+            self.catalog = catalog
+            _LOGGER.log(
+                logging.INFO if first else logging.DEBUG,
+                "Machine beverage catalogue for dsn=%s: %s",
+                self.device.dsn,
+                catalog_summary(catalog),
+            )
+        except Exception:  # noqa: BLE001 - diagnostic must never break the poll
+            _LOGGER.debug("Beverage catalogue parse failed; keeping previous", exc_info=True)
 
     def _update_monitor(self, props: dict[str, Any]) -> None:
         """Decode the machine monitor blob (diagnostic; must never break the poll).
@@ -951,9 +1008,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         lines = recipe_dump_lines(self.data)
         _LOGGER.warning(
             "=== DeLonghi recipe datapoint dump (dsn=%s, %d entries) BEGIN ===\n"
-            "%s\n=== recipe datapoint dump END ===",
+            "catalogue: %s\n%s\n=== recipe datapoint dump END ===",
             self.device.dsn,
             len(lines),
+            catalog_summary(self.catalog),
             "\n".join(lines),
         )
 
@@ -1003,12 +1061,16 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._refresh_device_app_id()
             return
 
-        bev_id = learnable_beverage_id(decoded)
+        # The machine's own declared ids widen the gate past the hardcoded list,
+        # so a saved recipe ("Perso 1", ids 0xe6-0xeb) or a bean-system drink
+        # brewed from the official app is captured instead of discarded.
+        bev_id = learnable_beverage_id(decoded, catalog_beverage_ids(self.catalog))
         if bev_id is None:
             if ftype == "beverage":
                 _LOGGER.debug(
                     "Not learning captured beverage frame (id=%s, crc_valid=%s): "
-                    "unknown beverage or invalid checksum",
+                    "beverage unknown to both the integration and the machine "
+                    "catalogue, or invalid checksum",
                     decoded.get("beverage_id"),
                     decoded.get("crc_valid"),
                 )

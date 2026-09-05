@@ -23,16 +23,16 @@
   "entity": {
     "sensor": {
       "total_beverages": {
-        "name": "Total Beverages"
+        "name": "Total Black Beverages"
       },
       "total_espresso": {
         "name": "Total Espresso"
       },
       "total_milk_drinks": {
-        "name": "Total Milk Drinks"
+        "name": "Total Coffee + Milk Beverages"
       },
       "total_water": {
-        "name": "Total Water"
+        "name": "Total Milk-Only Beverages"
       },
       "total_espresso_alt": {
         "name": "Total Espresso Alt"
@@ -162,6 +162,18 @@
       },
       "last_captured_command": {
         "name": "Last Captured Command"
+      },
+      "total_other_beverages": {
+        "name": "Total Other Beverages"
+      },
+      "total_cortado": {
+        "name": "Total Cortado"
+      },
+      "total_long_black": {
+        "name": "Total Long Black"
+      },
+      "total_mug_to_go": {
+        "name": "Total Mug to Go"
       }
     },
     "button": {

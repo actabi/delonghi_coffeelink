@@ -29,6 +29,196 @@ All notable changes to this project will be documented in this file.
   timestamp**, unlike ECAM's `app_device_connected`, which takes
   `base64(timestamp + signed_app_id)`. The payload is per profile for that reason.
 
+  Two things were added on review before this shipped:
+
+  - **A failing keepalive is now loud.** It used to swallow every error into
+    DEBUG *and* advance its own rate-limit clock before the attempt, which
+    together reproduced the very bug it fixes - green polls, frozen status,
+    nothing to say why - plus a full interval of guaranteed silence after each
+    failure. The first failure and the recovery are warnings, the repeats are
+    debug, the clock advances only on a write that landed, and one INFO on
+    arming names the property and the cadence so the traffic is identifiable.
+  - **Unrecognised machines do not get the keepalive.** The payload is a bare
+    unix timestamp, confirmed on `DL-millcore` and nowhere else - the Eletta
+    family takes a different shape entirely - so writing it every 15 s into the
+    property the official app uses for its own session is not a guess worth
+    making on hardware nobody has tested. A new `GenericSoulProfile` takes the
+    unknown-model fallback: same command dialect, which does generalise, without
+    the keepalive, which does not.
+
+- **Correction to a claim shipped in 0.3.20: the `a8f0` lists are not the
+  machine's menu.** The release notes said the reference machine "actually
+  offers" 18 drinks and that three of the buttons shipped for it were therefore
+  fiction. That reading was wrong, and the machine's owner is what disproved it:
+  he can see Doppio+ on the machine's own screen, and its lifetime counter reads
+  **823 brews** - yet it appears in none of the five lists in one dump and in
+  only two of them in another.
+
+  What the lists actually are: a per-profile ordered *short list* of fixed size.
+  Every profile holds exactly 18 entries in every dump, and the contents move -
+  between two dumps of the same machine, profiles 1, 4 and 5 dropped Doppio+ and
+  picked up the bean-system drink, while 2 and 3 kept Doppio+ and never had the
+  bean system. Fixed size with moving contents is a carousel, not a capability
+  list.
+
+  So `on_menu` is now `in_priority_list`, `menu` is `priority_lists`,
+  `menu_position` is `priority_position`, and the docstrings say plainly that
+  membership proves nothing in either direction. No entity or datapoint changes:
+  nothing consumed these fields yet, which is the only reason the wrong reading
+  cost documentation rather than hidden buttons. A test pins the drift between
+  the two dumps so the convenient interpretation cannot come back.
+
+### Changed
+- **`_slot_is_defined` no longer checks the `0xff` intensity marker.** A slot
+  that dispenses nothing has not been programmed, and that was already the whole
+  test: every unprogrammed slot on the reference machine reads zero for coffee,
+  milk and water, so the marker decided nothing. Removing it also removes a
+  claim about what `0xff` means that no machine has had to confirm - and were a
+  slot ever to carry a real volume alongside it, "it pours something, so it is
+  programmed" is the answer we would want anyway. Found by mutating the guard
+  and watching the suite stay green.
+
+### Added
+- **A second test fixture: the same reference machine, read whole**
+  (`tests/fixtures/soul_recipes_full.json`), straight off the running
+  integration on v0.3.20. The truncation
+  was never the machine's doing - it came from the dump script, and it was
+  hiding exactly the data worth having: 20 of the 28 factory descriptors carry
+  their min/default/max ranges past that cut. Readable parameter schemas go from
+  **8 to 27**.
+
+  The parser met these bytes for the first time here, having been written
+  against the truncated dump, and read all 137 blobs with **137/137 checksums
+  valid, nothing truncated, nothing left over by the TLV grammar**.
+
+  What that unlocks: **nothing about this machine is unknown any more**. Whether
+  a drink has been customised stops being a shrug - espresso reads 48 ml on
+  three of five profiles against a factory default of 40, so `off_default` now
+  says so instead of `None`, while doppio sits exactly on its factory 120 ml.
+  Both directions are pinned. Because the dump now selects by blob family, the
+  fixture also reaches what the old `_rec_` name filter never did: the six
+  saved-recipe slots (read as unprogrammed from the machine's own values, not
+  guessed) and the bean-system drink `0xc8`, which no hardcoded beverage list
+  has ever carried and which turns out to declare coffee 30/40/60 ml.
+
+  The truncated fixture is kept alongside it, and not out of sentiment: 31 of
+  its blobs are cut, which is a real shape the parser has to survive.
+
+  Neither needs anonymisation, and tests enforce that rather than trusting it.
+  The dump renders recipe families only - no serial, no settings PIN, no monitor
+  blob - and redacts the user-entered text of the three name families, which is
+  why those blobs are absent rather than scrubbed.
+
+## [0.3.20] - 2026-09-04
+
+The machine has been publishing its own beverage catalogue all along, in the
+properties this integration already polls every 30 seconds. Nothing here creates
+or removes an entity yet - it reads what is there, proves it intact, and stops
+the integration throwing away data it needs.
+
+The counters it exposes were also telling two lies, now corrected.
+
+### Added
+
+- **The machine's own beverage catalogue is now parsed** (`catalog.py`). Every
+  recipe datapoint is a self-describing blob, `d0 <len> <family> [<profile>]
+  <bevid> <TLV...> <crc16>`, carrying the same CRC16 AUG-CCITT the command
+  builder already uses - so it can be *proved* intact before anything is derived
+  from it. Measured on the reference PrimaDonna Soul (312 properties): 194 blobs,
+  163 complete, **163/163 checksums valid**, and one TLV rule (tags `0x01`,
+  `0x09`, `0x0f` are 16-bit, everything else 8-bit) consumes **140/140** recipe
+  payloads with zero leftover bytes.
+
+  What the machine turns out to publish: each profile's ordered short list of 18
+  entries (**see the Unreleased correction above - this is a selection, not the
+  set of drinks the machine can make**); the current quantity of every parameter
+  of every drink on every profile; the **editable min/default/max ranges** from
+  the factory descriptors (hot water 20/250/420 ml, hot milk 50/360/1080); the
+  six saved-recipe slots and the bean-system drink, none of which the hardcoded
+  beverage list has ever had; and the user-entered names.
+
+  It is read-only for now and costs no new request - roughly 4 ms of parsing,
+  behind a fingerprint so it only re-runs when a recipe actually changes.
+
+- **`total_other_beverages` (`d702_tot_bev_other`)**, which was not exposed at
+  all. Without it the four buckets can never be reconciled against the machine's
+  own lifetime total.
+- **Counters for beverage ids 24, 25 and 26** - `total_cortado`,
+  `total_long_black`, `total_mug_to_go` (`d727_id24_cortado`,
+  `d728_id25_long_black`, `d729_id26_travel_mug`). These three drinks had buttons
+  in `BEVERAGES` and counters on the machine, but no sensor; every other id from
+  1 to 27 had one.
+
+### Fixed
+
+- **A drink you saved on the machine could never be learned.** `learnable_
+  beverage_id` accepted only the 21 hardcoded ids, so pressing "Perso 1" (ids
+  `0xe6`-`0xeb`) or a bean-system drink (`0xc8`) in the official app had its
+  captured frame **discarded in silence** - and on a learn-and-replay model that
+  frame is the only way the integration could ever reproduce that drink. The gate
+  now also accepts the ids the machine itself declares. The checksum rule is
+  unchanged: a corrupt frame is still never learned.
+- **The recipe dump missed exactly the recipes worth dumping.** It selected
+  properties by the substring `_rec_`, which on the reference machine caught 137
+  datapoints and skipped all 30 saved-recipe blobs, all 5 bean-system recipes and
+  `d022_beansystem_1`. It now selects by blob family, so the diagnostic surfaces
+  all 194 - and it no longer depends on property names, which differ per model
+  (`d039_1_rec_espresso` on the Soul, `d059_rec_1_espresso` on the Eletta, with
+  the numbers shifted by 20 for the same drink).
+
+- **`Total Beverages` was not the total, and `Total Water` had nothing to do
+  with water.** The `d700_tot_bev_b` / `d701_tot_bev_bw` / `d703_tot_bev_w`
+  suffixes are **b**lack / **b**lack+**w**hite / **w**hite, not
+  "beverages" / "milk drinks" / "water". Verified by arithmetic against a live
+  PrimaDonna Soul rather than by reading the names:
+
+  | datapoint | was labelled | actually | proof on the reference machine |
+  |---|---|---|---|
+  | `d700_tot_bev_b` | Total Beverages | black drinks only | espresso 4 + coffee 4633 + doppio 1 = **4638 exact** |
+  | `d703_tot_bev_w` | Total Water | milk-only drinks | hot_milk **24 = 24 exact** |
+  | `d701_tot_bev_bw` | Total Milk Drinks | coffee + milk | 248 |
+
+  So `Total Beverages` under-reported that machine's lifetime by ~6 %: the real
+  figure is `4638 + 248 + 24 + 7 = 4917`.
+
+  `entity_id`s are deliberately **unchanged** - `sensor.…_total_water` keeps its
+  slug while displaying "Total Milk-Only Beverages". Renaming would break every
+  existing history, statistic and automation for no functional gain.
+
+### Changed
+
+- Documented, and pinned with a test, that `COUNTER_SENSORS` matches datapoints
+  by **exact full name**. d-numbers are not stable across models: the six
+  `mug`/`iced`/`cold brew` entries name numbers that on a PrimaDonna Soul carry
+  `d731_pregr_coff_cnt`, `d732_taste_b_bw`, `d735_b_water_qty`,
+  `d736_bw_coff_water_qty`, `d737_bw_milk_time_qty` and
+  `d738_espressi_water_qty`. Exact matching is the only reason none of them is
+  published under a confident, wrong label.
+
+### Security
+
+- **The recipe dump no longer publishes the machine's serial number.** The
+  machine wraps its serial (`d270`), its settings PIN (`d280`), the monitor blob
+  and the command-response channel in the *same* `0xd0` envelope as its recipes,
+  so selecting on that prefix alone would have put a serial in every bug report -
+  and the README asks users to paste this block into public GitHub issues. Only
+  the six catalogue families are rendered now, and the user-entered text of the
+  three name families (profile names are first names) is replaced by a byte
+  count. The old `_rec_` filter never reached any of them.
+
+### Notes
+
+- Nothing derived here is asserted beyond what the bytes support. A blob that
+  fails any gate is *unreadable*, never *absent*; a TLV walk with a leftover byte
+  is refused whole rather than half-parsed; `off_default` is `None` - not `False`
+  - wherever the factory descriptor is truncated, and cross-profile disagreement
+  is reported separately as the weaker signal it is.
+- `tests/fixtures/soul_properties.json` is a real 312-property dump, anonymised:
+  the serial, the Wi-Fi MAC (three plain integers - a scan that only reads the
+  base64 strings walks straight past it) and every user-entered name were
+  overwritten, with checksums recomputed. `fixtures/anonymise_dump.py` reproduces
+  it and a test fails the day the fixture is refreshed without re-anonymising.
+
 ## [0.3.19] - 2026-08-22
 
 Everything here comes from one field diagnosis on the reference PrimaDonna Soul:
@@ -121,10 +311,9 @@ cloud accepted with `200 OK` and never delivered.
 ### Changed
 - **BREAKING for statistics** - `Water Total Quantity` and `Water Filter
   Quantity` now report **litres** instead of a unitless count. De'Longhi
-  machines publish these counters in millilitres (independently confirmed by
-  De'Longhi's own statistics sheet, by `sk7n4k3d/delonghi-ha` which applies
-  `scale=0.001` to the same datapoints, and by `PyDeLonghiAPI` which derives
-  lifetime litres as `d553 / 1000`), and Home Assistant's water device class
+  machines publish these counters in millilitres (confirmed against De'Longhi's
+  own statistics sheet, which is denominated in litres), and Home Assistant's
+  water device class
   works in litres. Existing installations have long-term statistics recorded
   without a unit, so Home Assistant will raise a "units changed" repair for
   these two entities; accepting it keeps history consistent with the new unit.
