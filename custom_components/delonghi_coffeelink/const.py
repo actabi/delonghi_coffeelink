@@ -55,6 +55,14 @@ CONNECT_SETTLE_DELAY = 4  # sleep after POST connect (background tasks only)
 CONNECT_CONFIRM_TIMEOUT = 300  # poll app_id after POST (Eletta; can exceed 180s on bad cloud days)
 CONNECT_CONFIRM_POLL_INTERVAL = 1  # seconds between app_id polls during confirm
 
+# Every Ayla call is bounded. The session comes from Home Assistant
+# (async_get_clientsession) and carries no total timeout of its own, so without
+# this a request that is accepted and then never answered hangs for as long as
+# the far end keeps the socket open. That was survivable while writes only
+# happened on a user action; the monitor keepalive now writes every 15 s, so an
+# unbounded call there would pile up silently against the poll loop.
+CLOUD_HTTP_TIMEOUT = 30  # seconds, per request
+
 # Ayla HTTP resilience (502/503/504 gateway timeouts seen on ads-eu.aylanetworks.com).
 CLOUD_HTTP_RETRY_COUNT = 2
 CLOUD_HTTP_RETRY_BACKOFF = 1.5  # seconds; multiplied by attempt index

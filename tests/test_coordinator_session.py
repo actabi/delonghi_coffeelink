@@ -673,12 +673,19 @@ class _FakeResponse:
 
 
 class _FakeSession:
-    """aiohttp.ClientSession.get(), enough for async_get_devices."""
+    """aiohttp.ClientSession.get(), enough for async_get_devices.
+
+    ``timeout`` is accepted and recorded rather than ignored: every Ayla call is
+    supposed to carry one, and a stub that silently swallowed the argument would
+    let that guarantee rot.
+    """
 
     def __init__(self, payload) -> None:
         self._payload = payload
+        self.timeouts: list = []
 
-    def get(self, url, headers=None):
+    def get(self, url, headers=None, timeout=None):
+        self.timeouts.append(timeout)
         return _FakeResponse(self._payload)
 
 
@@ -1207,3 +1214,21 @@ def test_an_unknown_soul_like_machine_is_never_written_to(caplog):
     assert coord.profile.key == "soul-generic", "the channel says Soul-like"
     assert _keepalives(client) == []
     assert coord._keepalive_armed is False
+
+
+def test_every_ayla_read_is_bounded_by_a_timeout():
+    """The session comes from Home Assistant and carries no total timeout.
+
+    Without an explicit one, a request the far end accepts and never answers
+    hangs as long as it likes. That was survivable while writes only happened on
+    a user action; the monitor keepalive now writes every 15 seconds.
+    """
+    session = _FakeSession([])
+    client = ac.DelonghiAylaClient(session, "user@example.com", "secret")
+    client._access_token = "token"
+    client._expires_at = time.time() + 3600
+
+    asyncio.run(client.async_get_devices())
+
+    assert session.timeouts, "the call must pass a timeout"
+    assert all(t is not None and t.total == const.CLOUD_HTTP_TIMEOUT for t in session.timeouts)

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Every Ayla call is now bounded by a 30 s timeout.** The HTTP session comes
+  from Home Assistant and carries no total timeout of its own, so a request the
+  far end accepted and then never answered would hang for as long as it kept the
+  socket open. That was survivable while writes only happened on a user action;
+  the monitor keepalive added in 0.3.21 writes every 15 seconds, which turns an
+  unbounded call into something that can quietly pile up against the poll loop.
+  Nothing observed in the field - hardening a path whose traffic profile changed.
+
 ## [0.3.21] - 2026-09-05
 
 ### Fixed
