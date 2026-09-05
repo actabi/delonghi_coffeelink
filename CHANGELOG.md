@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.3.21] - 2026-09-05
 
 ### Fixed
 - **PrimaDonna Soul: Machine Status no longer freezes (#14).** The Soul publishes
