@@ -110,6 +110,30 @@ class SoulProfile(ModelProfile):
         return int(time.time())
 
 
+class GenericSoulProfile(SoulProfile):
+    """A machine that speaks the Soul dialect but is not a known Soul.
+
+    ``profile_for`` falls back here for any unrecognised ``oem_model`` on the
+    plain ``data_request`` channel, and the only thing this changes is that the
+    monitor keepalive stays off. The keepalive writes a bare unix timestamp to
+    whichever ``CONNECTED_PROPERTY_CANDIDATES`` entry the device exposes, and
+    that payload shape is confirmed on ``DL-millcore`` and nowhere else - the
+    Eletta family's ``app_device_connected`` takes ``base64(timestamp +
+    signed_app_id)`` instead, and a machine we have never seen may take a third
+    thing. Writing the wrong shape into the property the official app uses to
+    register its own session is not a guess worth making on someone else's
+    machine, and doing it every 15 s is not a guess worth repeating.
+
+    Everything else - the fixed 18-byte beverage frame, the synthesized wake -
+    is unchanged, so an unknown Soul-like machine keeps working exactly as it
+    did before the keepalive existed.
+    """
+
+    key = "soul-generic"
+    label = "Soul-style machine (unrecognised model)"
+    keeps_monitor_session = False
+
+
 class ElettaProfile(ModelProfile):
     """Eletta Explore (``oem_model = DL-striker-cb``).
 
@@ -169,5 +193,7 @@ def profile_for(oem_model: str | None, command_property: str | None = None) -> M
         if profile.matches(oem):
             return profile()
     if command_property == "data_request":
-        return SoulProfile()
+        # Deliberately not SoulProfile: same command dialect, but the monitor
+        # keepalive is confirmed on DL-millcore only. See GenericSoulProfile.
+        return GenericSoulProfile()
     return ElettaProfile()

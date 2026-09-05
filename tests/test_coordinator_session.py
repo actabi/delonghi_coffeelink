@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import importlib.util
+import logging
 import sys
 import time
 import types
@@ -936,3 +937,116 @@ def test_a_failed_keepalive_never_fails_the_poll():
 
     assert props
     assert coord.monitor["status_name"] == "standby"
+
+
+# --- keepalive health: the failure must not be quiet ------------------------
+#
+# A keepalive that fails every time rebuilds the exact blind spot it exists to
+# close: polls green, machine Online, counters moving, Machine Status frozen.
+# The write is a plain POST that never enters the transient-retry helper, so
+# nothing else in the stack would report it either.
+
+
+class _RefusingKeepaliveClient(_PollingClient):
+    """Fails the connected-property write, answers every poll normally."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.refuse = True
+
+    async def async_set_property_value(self, dsn, prop, value):
+        if prop == "device_connected" and self.refuse:
+            raise RuntimeError("cloud refused the datapoint write")
+        return await super().async_set_property_value(dsn, prop, value)
+
+
+def test_the_first_keepalive_failure_warns_and_the_repeats_do_not(caplog):
+    """Loud once, then quiet: a warning per poll would be its own kind of noise."""
+    client = _RefusingKeepaliveClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    with caplog.at_level(logging.WARNING, logger=coordinator.__name__):
+        asyncio.run(coord._async_update_data())
+        first = [r for r in caplog.records if "keepalive failed" in r.message]
+        assert len(first) == 1, "the first failure must be visible"
+        assert "Machine Status will freeze" in first[0].message
+
+        caplog.clear()
+        coord._last_monitor_session_at -= const.MONITOR_KEEPALIVE_INTERVAL + 1
+        asyncio.run(coord._async_update_data())
+        assert [r for r in caplog.records if "keepalive failed" in r.message] == []
+    assert coord._keepalive_failures == 2
+
+
+def test_a_failure_is_retried_on_the_next_poll_not_deferred(caplog):
+    """The rate-limit stamp must only advance on a write that landed.
+
+    Stamping it before the attempt would turn every failure into a full interval
+    of guaranteed silence, which is the opposite of what a keepalive is for.
+    """
+    client = _RefusingKeepaliveClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    asyncio.run(coord._async_update_data())
+    assert coord._last_monitor_session_at == 0, "a failed write leaves the clock alone"
+
+    client.refuse = False
+    asyncio.run(coord._async_update_data())
+    assert len(_keepalives(client)) == 1, "the very next poll retries, no waiting"
+    assert coord._last_monitor_session_at > 0
+
+
+def test_recovery_is_announced(caplog):
+    """Coming back matters as much as breaking: the log has to close the loop."""
+    client = _RefusingKeepaliveClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    with caplog.at_level(logging.WARNING, logger=coordinator.__name__):
+        asyncio.run(coord._async_update_data())
+        client.refuse = False
+        caplog.clear()
+        asyncio.run(coord._async_update_data())
+
+    recovered = [r for r in caplog.records if "recovered" in r.message]
+    assert len(recovered) == 1
+    assert coord._keepalive_failures == 0
+
+
+def test_arming_the_keepalive_is_announced_once(caplog):
+    """The integration starts writing to the machine every 15 s; say so.
+
+    Once, at INFO, naming the property and the cadence - so a user reading their
+    log can tell this traffic is ours and deliberate.
+    """
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    with caplog.at_level(logging.INFO, logger=coordinator.__name__):
+        asyncio.run(coord._async_update_data())
+        coord._last_monitor_session_at -= const.MONITOR_KEEPALIVE_INTERVAL + 1
+        asyncio.run(coord._async_update_data())
+
+    armed = [r for r in caplog.records if "Keeping the monitor session alive" in r.message]
+    assert len(armed) == 1, "announced on arming, not on every write"
+    assert "device_connected" in armed[0].message
+
+
+def test_an_unknown_soul_like_machine_is_never_written_to(caplog):
+    """The keepalive payload is confirmed on DL-millcore and nowhere else.
+
+    An unrecognised machine on the data_request channel keeps the Soul command
+    dialect, which does generalise, and loses only the periodic write - which
+    would otherwise put a bare timestamp into the property the official app uses
+    to register its own session, 2880 times a day, on hardware nobody has tested.
+    """
+    props = _soul_poll_props()
+    props["data_request"] = {"value": "AA==", "data_updated_at": "t0"}
+    client = _PollingClient(props=props)
+    coord = _coord("DL-future-xyz", client=client)
+    coord.command_property = None  # let the poll detect the channel, as it does live
+
+    asyncio.run(coord._async_update_data())
+
+    assert coord.profile.key == "soul-generic", "the channel says Soul-like"
+    assert _keepalives(client) == []
+    assert coord._keepalive_armed is False
