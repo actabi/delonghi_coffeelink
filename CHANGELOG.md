@@ -4,6 +4,70 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **PrimaDonna Soul: Machine Status no longer freezes (#14).** The Soul publishes
+  `d302_monitor` only while an app session is written to `device_connected`, and
+  the integration wrote that once, during `async_setup_entry`. Once the session
+  lapsed the machine stopped publishing and the sensor held its last value - five
+  days, on the reporting machine, while it was in daily use. Nothing looked wrong:
+  the coordinator polled every 30 s with `success: True`, `connection_status`
+  stayed `Online`, and counters kept updating, because the machine *does* push
+  those unprompted. The coordinator now rewrites the session on a timer for
+  profiles that need it (`keeps_monitor_session`), which makes the machine
+  republish its status. A failed keepalive is logged and swallowed - it costs one
+  stale poll and must not fail the update.
+
+  The keepalive interval is the sensor's **resolution**, not just a timeout guard:
+  the Soul was measured never to publish a status change on its own. It is set to
+  **half** the poll interval, and must stay strictly below it - equal to the poll
+  period, the `now - last < INTERVAL` guard rejects the very poll it rides on
+  (the stamp lands a few hundred ms in, so the next poll arrives a hair under one
+  interval later). That skipped roughly every other cycle: successive writes were
+  measured at +61 / +30 / +31 / +60 s, silently halving the resolution.
+
+  Note for other models: the Soul's `device_connected` takes a **plain unix
+  timestamp**, unlike ECAM's `app_device_connected`, which takes
+  `base64(timestamp + signed_app_id)`. The payload is per profile for that reason.
+
+  Two things were added on review before this shipped:
+
+  - **A failing keepalive is now loud.** It used to swallow every error into
+    DEBUG *and* advance its own rate-limit clock before the attempt, which
+    together reproduced the very bug it fixes - green polls, frozen status,
+    nothing to say why - plus a full interval of guaranteed silence after each
+    failure. The first failure and the recovery are warnings, the repeats are
+    debug, the clock advances only on a write that landed, and one INFO on
+    arming names the property and the cadence so the traffic is identifiable.
+  - **Unrecognised machines do not get the keepalive.** The payload is a bare
+    unix timestamp, confirmed on `DL-millcore` and nowhere else - the Eletta
+    family takes a different shape entirely - so writing it every 15 s into the
+    property the official app uses for its own session is not a guess worth
+    making on hardware nobody has tested. A new `GenericSoulProfile` takes the
+    unknown-model fallback: same command dialect, which does generalise, without
+    the keepalive, which does not.
+
+- **Correction to a claim shipped in 0.3.20: the `a8f0` lists are not the
+  machine's menu.** The release notes said the reference machine "actually
+  offers" 18 drinks and that three of the buttons shipped for it were therefore
+  fiction. That reading was wrong, and the machine's owner is what disproved it:
+  he can see Doppio+ on the machine's own screen, and its lifetime counter reads
+  **823 brews** - yet it appears in none of the five lists in one dump and in
+  only two of them in another.
+
+  What the lists actually are: a per-profile ordered *short list* of fixed size.
+  Every profile holds exactly 18 entries in every dump, and the contents move -
+  between two dumps of the same machine, profiles 1, 4 and 5 dropped Doppio+ and
+  picked up the bean-system drink, while 2 and 3 kept Doppio+ and never had the
+  bean system. Fixed size with moving contents is a carousel, not a capability
+  list.
+
+  So `on_menu` is now `in_priority_list`, `menu` is `priority_lists`,
+  `menu_position` is `priority_position`, and the docstrings say plainly that
+  membership proves nothing in either direction. No entity or datapoint changes:
+  nothing consumed these fields yet, which is the only reason the wrong reading
+  cost documentation rather than hidden buttons. A test pins the drift between
+  the two dumps so the convenient interpretation cannot come back.
+
 ### Changed
 - **`_slot_is_defined` no longer checks the `0xff` intensity marker.** A slot
   that dispenses nothing has not been programmed, and that was already the whole
@@ -44,31 +108,6 @@ All notable changes to this project will be documented in this file.
   The dump renders recipe families only - no serial, no settings PIN, no monitor
   blob - and redacts the user-entered text of the three name families, which is
   why those blobs are absent rather than scrubbed.
-
-## [Unreleased]
-
-### Fixed
-- **Correction to a claim shipped in 0.3.20: the `a8f0` lists are not the
-  machine's menu.** The release notes said the reference machine "actually
-  offers" 18 drinks and that three of the buttons shipped for it were therefore
-  fiction. That reading was wrong, and the machine's owner is what disproved it:
-  he can see Doppio+ on the machine's own screen, and its lifetime counter reads
-  **823 brews** - yet it appears in none of the five lists in one dump and in
-  only two of them in another.
-
-  What the lists actually are: a per-profile ordered *short list* of fixed size.
-  Every profile holds exactly 18 entries in every dump, and the contents move -
-  between two dumps of the same machine, profiles 1, 4 and 5 dropped Doppio+ and
-  picked up the bean-system drink, while 2 and 3 kept Doppio+ and never had the
-  bean system. Fixed size with moving contents is a carousel, not a capability
-  list.
-
-  So `on_menu` is now `in_priority_list`, `menu` is `priority_lists`,
-  `menu_position` is `priority_position`, and the docstrings say plainly that
-  membership proves nothing in either direction. No entity or datapoint changes:
-  nothing consumed these fields yet, which is the only reason the wrong reading
-  cost documentation rather than hidden buttons. A test pins the drift between
-  the two dumps so the convenient interpretation cannot come back.
 
 ## [0.3.20] - 2026-09-04
 

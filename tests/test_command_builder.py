@@ -529,8 +529,27 @@ def test_profile_unknown_model_defaults_sensibly():
     default - unless the plain data_request channel says it's Soul-like."""
     assert mp.profile_for(None).key == "eletta"
     assert mp.profile_for("DL-future-xyz").key == "eletta"
-    assert mp.profile_for("DL-future-xyz", command_property="data_request").key == "soul"
+    assert mp.profile_for("DL-future-xyz", command_property="data_request").key == "soul-generic"
     assert mp.profile_for("DL-future-xyz", command_property="app_data_request").key == "eletta"
+
+
+def test_an_unknown_soul_like_machine_gets_the_dialect_but_not_the_keepalive():
+    """The command dialect generalises; the keepalive payload shape does not.
+
+    A bare unix timestamp in the connected property is confirmed on
+    ``DL-millcore`` and nowhere else - the Eletta family takes a different shape
+    entirely - so writing it every 15 seconds to a machine nobody has tested is
+    a guess repeated 2880 times a day. The rest of the Soul behaviour is safe to
+    inherit and does inherit.
+    """
+    unknown = mp.profile_for("DL-future-xyz", command_property="data_request")
+    known = mp.profile_for("DL-millcore")
+    assert unknown.keeps_monitor_session is False
+    assert known.keeps_monitor_session is True
+    assert unknown.monitor_session_value() is not None, "only the flag differs"
+    assert unknown.learns_from_app == known.learns_from_app
+    assert unknown.command_property == known.command_property
+    assert isinstance(unknown, type(known)), "still a Soul, just not a known one"
 
 
 def test_soul_profile_synthesizes_commands():

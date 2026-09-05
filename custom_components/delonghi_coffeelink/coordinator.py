@@ -52,6 +52,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     INTEGRATION_CLOUD_APP_ID,
+    MONITOR_KEEPALIVE_INTERVAL,
     MONITOR_PROPERTY_CANDIDATES,
     REACHABILITY_MAX_AGE,
     RECIPE_STORE_SAVE_DELAY,
@@ -104,6 +105,12 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._device_app_id: int | None = None
         self._integration_app_id = self._default_app_id
         self._last_connect_at: float = 0
+        # Last `device_connected` keepalive; 0 = due immediately on first poll.
+        self._last_monitor_session_at: float = 0
+        # Keepalive health, so a persistent failure is visible from the first
+        # occurrence instead of surfacing as a frozen status days later.
+        self._keepalive_failures = 0
+        self._keepalive_armed = False
         self._session_confirmed = False
         self._session_connect_lock = asyncio.Lock()
         self._session_cold_task: asyncio.Task[None] | None = None
@@ -176,7 +183,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.response_property = self._detect_property(
                     props, RESPONSE_PROPERTY_CANDIDATES, "response", required=False
                 )
-            if self.profile.uses_cloud_session and self.connected_property is None:
+            needs_connected = (
+                self.profile.uses_cloud_session or self.profile.keeps_monitor_session
+            )
+            if needs_connected and self.connected_property is None:
                 self.connected_property = self._detect_property(
                     props, CONNECTED_PROPERTY_CANDIDATES, "connected", required=False
                 )
@@ -193,11 +203,90 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.device = d
                     self._device_seen_at = time.time()
                     break
+            # Ask the machine to publish a fresh monitor blob for the NEXT poll.
+            # Done last, and deliberately not before the read above: the machine
+            # takes several seconds to answer, so the value it produces is the
+            # one this poll's successor will pick up.
+            await self._refresh_monitor_session()
             return props
         except CloudError as err:
             raise UpdateFailed(f"Ayla cloud error: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Error fetching Delonghi data: {err}") from err
+
+    async def _refresh_monitor_session(self) -> None:
+        """Keep the machine publishing its monitor datapoint (issue #14).
+
+        The PrimaDonna Soul publishes ``d302_monitor`` - its live status - only
+        when an app session is written to ``device_connected``; it does not push
+        status changes on its own. Verified on ECAM610.55 / ``DL-millcore`` /
+        ADA 1.5.3: a write is answered with a fresh monitor blob in ~4-7 s, and
+        with no write the datapoint had not moved in **five days** while the
+        machine was in daily use.
+
+        The failure this prevents is a silent one. Counters (``d7xx_*``) and
+        settings (``d2xx_*``) *are* pushed by the machine unprompted, so every
+        poll succeeds, ``connection_status`` stays ``Online`` and the integration
+        looks healthy - while Machine Status reports a value that may be days
+        old. Automations keyed on it simply never fire.
+
+        Never fatal: a failed keepalive costs one stale poll, so it must not take
+        the whole update down with it. Never quiet either. A keepalive that
+        fails every time rebuilds the exact blind spot this method exists to
+        close - polls green, machine Online, counters moving, status frozen - so
+        the first failure and the recovery are warnings and only the repeats are
+        debug. The write is a plain POST that never enters the transient-retry
+        helper, so nothing else in the stack would report it.
+        """
+        if not self.profile.keeps_monitor_session or not self.connected_property:
+            return
+        value = self.profile.monitor_session_value()
+        if value is None:
+            return
+        now = time.time()
+        if now - self._last_monitor_session_at < MONITOR_KEEPALIVE_INTERVAL:
+            return
+        if not self._keepalive_armed:
+            self._keepalive_armed = True
+            _LOGGER.info(
+                "Keeping the monitor session alive for dsn=%s: writing '%s' every "
+                "%ds so the machine keeps publishing its status (issue #14)",
+                self.device.dsn,
+                self.connected_property,
+                MONITOR_KEEPALIVE_INTERVAL,
+            )
+        try:
+            await self.client.async_set_property_value(
+                self.device.dsn, self.connected_property, value
+            )
+        except Exception as err:  # noqa: BLE001 - a missed keepalive must not fail the poll
+            # The rate-limit clock is deliberately NOT advanced here: a failure
+            # is retried on the next poll rather than deferred a full interval,
+            # which would turn every hiccup into guaranteed silence.
+            self._keepalive_failures += 1
+            if self._keepalive_failures == 1:
+                _LOGGER.warning(
+                    "Monitor session keepalive failed for dsn=%s: %s. Machine "
+                    "Status will freeze on its last value until this recovers.",
+                    self.device.dsn,
+                    err,
+                )
+            else:
+                _LOGGER.debug(
+                    "Monitor session keepalive still failing for dsn=%s (%d in a row)",
+                    self.device.dsn,
+                    self._keepalive_failures,
+                    exc_info=True,
+                )
+            return
+        self._last_monitor_session_at = now
+        if self._keepalive_failures:
+            _LOGGER.warning(
+                "Monitor session keepalive recovered for dsn=%s after %d failure(s)",
+                self.device.dsn,
+                self._keepalive_failures,
+            )
+            self._keepalive_failures = 0
 
     @staticmethod
     def _monitor_value(props: dict[str, Any], prop_name: str | None) -> str | None:

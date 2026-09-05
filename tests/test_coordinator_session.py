@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import importlib.util
+import logging
 import sys
 import time
 import types
@@ -974,3 +975,235 @@ def test_an_id_no_one_declares_is_still_refused():
     coord.catalog = catalog.build_catalog(SLOT_PROPS)
     _capture(coord, frame)
     assert coord.learned_start_frames == {}
+
+# --- Soul monitor-session keepalive (#14) -----------------------------------
+#
+# The field failure these pin down: on a PrimaDonna Soul (ECAM610.55,
+# DL-millcore, ADA 1.5.3) `d302_monitor` had not moved in five days while the
+# machine was in daily use, so Machine Status read `standby` throughout. Every
+# poll succeeded and `connection_status` stayed `Online` - the stale value was in
+# the cloud. The Soul publishes its monitor blob only when an app session is
+# written to `device_connected`, and that happened once, at setup. Counters kept
+# flowing the whole time, which is exactly what made it invisible.
+
+def _soul_poll_props():
+    props = _monitor_props(d302_monitor=SOUL_MONITOR_BLOB)
+    props["device_connected"] = {"value": "1788209091"}
+    return props
+
+
+def _keepalives(client):
+    return [w for w in client.writes if w[1] == "device_connected"]
+
+
+def test_a_soul_poll_refreshes_the_monitor_session():
+    """Without this write the machine simply stops publishing its status."""
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    asyncio.run(coord._async_update_data())
+
+    assert coord.connected_property == "device_connected"
+    assert len(_keepalives(client)) == 1
+    # A plain unix timestamp - NOT the base64(ts + app_id) blob that ECAM's
+    # app_device_connected takes (ayla_client.async_post_cloud_session). The two
+    # payloads are not interchangeable.
+    value = _keepalives(client)[0][2]
+    assert isinstance(value, int)
+    assert abs(value - int(time.time())) < 5
+
+
+def test_the_keepalive_is_rate_limited():
+    """Two polls inside one interval must still cost exactly one write."""
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    asyncio.run(coord._async_update_data())
+    asyncio.run(coord._async_update_data())
+
+    assert len(_keepalives(client)) == 1
+
+
+def test_the_keepalive_comes_round_again_once_the_interval_lapses():
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+    asyncio.run(coord._async_update_data())
+
+    coord._last_monitor_session_at -= const.MONITOR_KEEPALIVE_INTERVAL + 1
+    asyncio.run(coord._async_update_data())
+
+    assert len(_keepalives(client)) == 2
+
+
+def test_the_keepalive_interval_leaves_room_for_the_poll_that_carries_it():
+    """The guard must not be able to reject the very poll it rides on.
+
+    Equal to DEFAULT_SCAN_INTERVAL, `now - last < INTERVAL` is a coin flip: the
+    keepalive is stamped a few hundred ms into a poll, so the *next* scheduled
+    poll lands a hair under one interval later and is skipped.
+    """
+    assert const.MONITOR_KEEPALIVE_INTERVAL < const.DEFAULT_SCAN_INTERVAL
+
+
+def test_a_poll_one_scan_interval_later_still_writes_the_keepalive():
+    """The regression itself: successive writes were +61/+30/+31/+60 s, not +30.
+
+    The gap here is a hair UNDER one scan interval, which is what a real polling
+    loop produces - and is exactly what the old `< DEFAULT_SCAN_INTERVAL` guard
+    rejected, deferring the write a whole cycle and halving the status
+    resolution.
+    """
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+    asyncio.run(coord._async_update_data())
+    assert len(_keepalives(client)) == 1
+
+    coord._last_monitor_session_at -= const.DEFAULT_SCAN_INTERVAL - 0.05
+    asyncio.run(coord._async_update_data())
+
+    assert len(_keepalives(client)) == 2, (
+        "a poll one scan interval later must carry a keepalive; "
+        "it was being skipped every other cycle"
+    )
+
+
+def test_eletta_polls_do_not_get_the_soul_keepalive():
+    """Eletta takes its session per command through app_device_connected; a
+    periodic timestamp write there would fight the official app for it."""
+    props = _monitor_props(d302_monitor_machine=ELETTA_MONITOR_BLOB)
+    props["device_connected"] = {"value": "1788209091"}
+    client = _PollingClient(props=props)
+    coord = _coord("DL-striker-cb", client=client)
+
+    asyncio.run(coord._async_update_data())
+
+    assert _keepalives(client) == []
+
+
+def test_a_failed_keepalive_never_fails_the_poll():
+    """A missed keepalive costs one stale poll. If it propagated, a single cloud
+    hiccup would blank every entity instead."""
+
+    class _RefusingClient(_PollingClient):
+        async def async_set_property_value(self, dsn, prop, value):
+            raise RuntimeError("cloud refused the datapoint write")
+
+    coord = _coord("DL-millcore", client=_RefusingClient(props=_soul_poll_props()))
+
+    props = asyncio.run(coord._async_update_data())
+
+    assert props
+    assert coord.monitor["status_name"] == "standby"
+
+
+# --- keepalive health: the failure must not be quiet ------------------------
+#
+# A keepalive that fails every time rebuilds the exact blind spot it exists to
+# close: polls green, machine Online, counters moving, Machine Status frozen.
+# The write is a plain POST that never enters the transient-retry helper, so
+# nothing else in the stack would report it either.
+
+
+class _RefusingKeepaliveClient(_PollingClient):
+    """Fails the connected-property write, answers every poll normally."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.refuse = True
+
+    async def async_set_property_value(self, dsn, prop, value):
+        if prop == "device_connected" and self.refuse:
+            raise RuntimeError("cloud refused the datapoint write")
+        return await super().async_set_property_value(dsn, prop, value)
+
+
+def test_the_first_keepalive_failure_warns_and_the_repeats_do_not(caplog):
+    """Loud once, then quiet: a warning per poll would be its own kind of noise."""
+    client = _RefusingKeepaliveClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    with caplog.at_level(logging.WARNING, logger=coordinator.__name__):
+        asyncio.run(coord._async_update_data())
+        first = [r for r in caplog.records if "keepalive failed" in r.message]
+        assert len(first) == 1, "the first failure must be visible"
+        assert "Machine Status will freeze" in first[0].message
+
+        caplog.clear()
+        coord._last_monitor_session_at -= const.MONITOR_KEEPALIVE_INTERVAL + 1
+        asyncio.run(coord._async_update_data())
+        assert [r for r in caplog.records if "keepalive failed" in r.message] == []
+    assert coord._keepalive_failures == 2
+
+
+def test_a_failure_is_retried_on_the_next_poll_not_deferred(caplog):
+    """The rate-limit stamp must only advance on a write that landed.
+
+    Stamping it before the attempt would turn every failure into a full interval
+    of guaranteed silence, which is the opposite of what a keepalive is for.
+    """
+    client = _RefusingKeepaliveClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    asyncio.run(coord._async_update_data())
+    assert coord._last_monitor_session_at == 0, "a failed write leaves the clock alone"
+
+    client.refuse = False
+    asyncio.run(coord._async_update_data())
+    assert len(_keepalives(client)) == 1, "the very next poll retries, no waiting"
+    assert coord._last_monitor_session_at > 0
+
+
+def test_recovery_is_announced(caplog):
+    """Coming back matters as much as breaking: the log has to close the loop."""
+    client = _RefusingKeepaliveClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    with caplog.at_level(logging.WARNING, logger=coordinator.__name__):
+        asyncio.run(coord._async_update_data())
+        client.refuse = False
+        caplog.clear()
+        asyncio.run(coord._async_update_data())
+
+    recovered = [r for r in caplog.records if "recovered" in r.message]
+    assert len(recovered) == 1
+    assert coord._keepalive_failures == 0
+
+
+def test_arming_the_keepalive_is_announced_once(caplog):
+    """The integration starts writing to the machine every 15 s; say so.
+
+    Once, at INFO, naming the property and the cadence - so a user reading their
+    log can tell this traffic is ours and deliberate.
+    """
+    client = _PollingClient(props=_soul_poll_props())
+    coord = _coord("DL-millcore", client=client)
+
+    with caplog.at_level(logging.INFO, logger=coordinator.__name__):
+        asyncio.run(coord._async_update_data())
+        coord._last_monitor_session_at -= const.MONITOR_KEEPALIVE_INTERVAL + 1
+        asyncio.run(coord._async_update_data())
+
+    armed = [r for r in caplog.records if "Keeping the monitor session alive" in r.message]
+    assert len(armed) == 1, "announced on arming, not on every write"
+    assert "device_connected" in armed[0].message
+
+
+def test_an_unknown_soul_like_machine_is_never_written_to(caplog):
+    """The keepalive payload is confirmed on DL-millcore and nowhere else.
+
+    An unrecognised machine on the data_request channel keeps the Soul command
+    dialect, which does generalise, and loses only the periodic write - which
+    would otherwise put a bare timestamp into the property the official app uses
+    to register its own session, 2880 times a day, on hardware nobody has tested.
+    """
+    props = _soul_poll_props()
+    props["data_request"] = {"value": "AA==", "data_updated_at": "t0"}
+    client = _PollingClient(props=props)
+    coord = _coord("DL-future-xyz", client=client)
+    coord.command_property = None  # let the poll detect the channel, as it does live
+
+    asyncio.run(coord._async_update_data())
+
+    assert coord.profile.key == "soul-generic", "the channel says Soul-like"
+    assert _keepalives(client) == []
+    assert coord._keepalive_armed is False
