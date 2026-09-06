@@ -673,12 +673,23 @@ class _FakeResponse:
 
 
 class _FakeSession:
-    """aiohttp.ClientSession.get(), enough for async_get_devices."""
+    """aiohttp.ClientSession.get(), enough for async_get_devices.
+
+    ``timeout`` is accepted and recorded rather than ignored: every Ayla call is
+    supposed to carry one, and a stub that silently swallowed the argument would
+    let that guarantee rot.
+    """
 
     def __init__(self, payload) -> None:
         self._payload = payload
+        self.timeouts: list = []
 
-    def get(self, url, headers=None):
+    def get(self, url, headers=None, timeout=None):
+        self.timeouts.append(timeout)
+        return _FakeResponse(self._payload)
+
+    def post(self, url, timeout=None, **kwargs):
+        self.timeouts.append(timeout)
         return _FakeResponse(self._payload)
 
 
@@ -1207,3 +1218,75 @@ def test_an_unknown_soul_like_machine_is_never_written_to(caplog):
     assert coord.profile.key == "soul-generic", "the channel says Soul-like"
     assert _keepalives(client) == []
     assert coord._keepalive_armed is False
+
+
+class _StallingSession:
+    """A session whose request never answers, the way a wedged gateway behaves."""
+
+    def request(self, *args, **kwargs):
+        raise TimeoutError("total timeout expired")
+
+
+def test_a_timeout_surfaces_as_a_cloud_error_not_a_raw_timeout():
+    """`TimeoutError` is not an `aiohttp.ClientError`, and every caller here
+    was built to expect `CloudError`.
+
+    `ServerTimeoutError` is a ClientError, which makes this easy to get wrong:
+    it covers the connect phase only, so a *total* timeout on a socket that
+    connected and then went quiet is a plain builtin. Catching only
+    `aiohttp.ClientError` would let it past the retry loop and past
+    `_fetch_app_id_live`, which degrades a CloudError cleanly and would simply
+    propagate this one.
+    """
+    client = ac.DelonghiAylaClient(_StallingSession(), "user@example.com", "secret")
+    client._access_token = "token"
+    client._expires_at = time.time() + 3600
+
+    with pytest.raises(ac.CloudError):
+        asyncio.run(client.async_get_property_resilient("DSN", "app_id"))
+
+
+def test_every_ayla_read_is_bounded_by_a_timeout():
+    """The session comes from Home Assistant and carries no total timeout.
+
+    Without an explicit one, a request the far end accepts and never answers
+    hangs as long as it likes. That was survivable while writes only happened on
+    a user action; the monitor keepalive now writes every 15 seconds.
+    """
+    session = _FakeSession([])
+    client = ac.DelonghiAylaClient(session, "user@example.com", "secret")
+    client._access_token = "token"
+    client._expires_at = time.time() + 3600
+
+    asyncio.run(client.async_get_devices())
+    assert session.timeouts, "the call must pass a timeout"
+
+    # The auth chain too, and it is the one that matters most: it runs before
+    # every read and every write, so an unbounded login stalls all of them. It
+    # was also the one call site the first pass at this missed.
+    session.timeouts.clear()
+    client._access_token = None
+    session._payload = {"sessionInfo": {"cookieValue": "x"}, "id_token": "y", "access_token": "z"}
+    try:
+        asyncio.run(client.async_authenticate())
+    except Exception:
+        pass  # the stub cannot complete the chain; what matters is what it recorded
+    assert session.timeouts, "the auth chain must pass a timeout too"
+
+    assert all(t is not None and t.total == const.CLOUD_HTTP_TIMEOUT for t in session.timeouts)
+
+
+def test_no_call_site_is_left_without_a_timeout():
+    """Belt to the braces: a new call added without one fails here.
+
+    The per-call kwarg is easy to forget - the first pass at this covered seven
+    of eight sites - so the source is checked directly rather than relying on a
+    test happening to exercise every path.
+    """
+    import re
+
+    source = (PKG_DIR / "ayla_client.py").read_text(encoding="utf-8")
+    calls = re.findall(r"self\._session\.(?:get|post|request)\((.*?)\) as resp", source, re.S)
+    assert len(calls) == 8, f"expected 8 call sites, found {len(calls)}"
+    for args in calls:
+        assert "timeout=_TIMEOUT" in args, f"unbounded Ayla call: {args[:80]}"

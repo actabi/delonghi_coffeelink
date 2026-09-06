@@ -25,6 +25,7 @@ from .const import (
     AYLA_EU_ADS_URL,
     AYLA_EU_USER_URL,
     CLOUD_HTTP_RETRY_BACKOFF,
+    CLOUD_HTTP_TIMEOUT,
     CLOUD_HTTP_RETRY_COUNT,
     CLOUD_TRANSIENT_HTTP_CODES,
     GIGYA_API_KEY,
@@ -65,6 +66,9 @@ class AylaDevice:
     # (and, on cloud-session models, is written by this integration itself).
     connected_at: str = ""
     properties: dict[str, Any] = field(default_factory=dict)
+
+
+_TIMEOUT = aiohttp.ClientTimeout(total=CLOUD_HTTP_TIMEOUT)
 
 
 class DelonghiAylaClient:
@@ -138,6 +142,7 @@ class DelonghiAylaClient:
                 async with self._session.request(
                     method,
                     url,
+                    timeout=_TIMEOUT,
                     headers=self._auth_headers(),
                     json=json_body,
                     data=data,
@@ -179,7 +184,11 @@ class DelonghiAylaClient:
                             f"{text[:200]}",
                             http_status=resp.status,
                         ) from err
-            except aiohttp.ClientError as err:
+            # TimeoutError is NOT an aiohttp.ClientError (ServerTimeoutError is,
+            # but that only covers the connect phase), so without it here a total
+            # timeout would escape raw - unretried, and past every caller that
+            # was built to expect CloudError.
+            except (aiohttp.ClientError, TimeoutError) as err:
                 elapsed_ms = (time.monotonic() - started) * 1000
                 last_error = CloudError(
                     f"{op or method} network error after {elapsed_ms:.0f}ms: {err}"
@@ -206,6 +215,7 @@ class DelonghiAylaClient:
         login_url = f"{GIGYA_BASE_URL}/accounts.login"
         async with self._session.post(
             login_url,
+            timeout=_TIMEOUT,
             data={
                 "apiKey": GIGYA_API_KEY,
                 "loginID": self._email,
@@ -239,7 +249,7 @@ class DelonghiAylaClient:
             hmac.new(base64.b64decode(session_secret), base_str.encode(), hashlib.sha1).digest()
         ).decode()
         params["sig"] = sig
-        async with self._session.post(url, data=params) as resp:
+        async with self._session.post(url, data=params, timeout=_TIMEOUT) as resp:
             jwt_body = json.loads(await resp.text())
         if jwt_body.get("errorCode") != 0:
             raise AuthError(f"Gigya getJWT failed: {jwt_body.get('errorMessage')}")
@@ -249,7 +259,7 @@ class DelonghiAylaClient:
         """Exchange JWT for Ayla access_token (form-urlencoded)."""
         url = f"{AYLA_EU_USER_URL}/api/v1/token_sign_in"
         data = {"token": jwt_token, "app_id": APP_ID, "app_secret": APP_SECRET}
-        async with self._session.post(url, data=data) as resp:
+        async with self._session.post(url, data=data, timeout=_TIMEOUT) as resp:
             if resp.status not in (200, 201):
                 text = await resp.text()
                 raise AuthError(f"Ayla SSO failed (HTTP {resp.status}): {text[:300]}")
@@ -264,7 +274,7 @@ class DelonghiAylaClient:
         """List all Ayla devices tied to this account."""
         await self.async_ensure_auth()
         url = f"{AYLA_EU_ADS_URL}/apiv1/devices.json"
-        async with self._session.get(url, headers=self._auth_headers()) as resp:
+        async with self._session.get(url, headers=self._auth_headers(), timeout=_TIMEOUT) as resp:
             data = await resp.json()
         devices: list[AylaDevice] = []
         for wrap in data:
@@ -287,7 +297,7 @@ class DelonghiAylaClient:
         """Fetch all properties of a device, keyed by property name."""
         await self.async_ensure_auth()
         url = f"{AYLA_EU_ADS_URL}/apiv1/dsns/{dsn}/properties.json"
-        async with self._session.get(url, headers=self._auth_headers()) as resp:
+        async with self._session.get(url, headers=self._auth_headers(), timeout=_TIMEOUT) as resp:
             data = await resp.json()
         props: dict[str, Any] = {}
         for item in data:
@@ -304,7 +314,10 @@ class DelonghiAylaClient:
         await self.async_ensure_auth()
         url = f"{AYLA_EU_ADS_URL}/apiv1/dsns/{dsn}/properties/{property_name}/datapoints.json"
         async with self._session.post(
-            url, headers=self._auth_headers(), json={"datapoint": {"value": value}}
+            url,
+            headers=self._auth_headers(),
+            json={"datapoint": {"value": value}},
+            timeout=_TIMEOUT,
         ) as resp:
             if resp.status not in (200, 201):
                 text = await resp.text()
@@ -317,7 +330,7 @@ class DelonghiAylaClient:
         """Fetch a single device property (fallback when coordinator.data is empty)."""
         await self.async_ensure_auth()
         url = f"{AYLA_EU_ADS_URL}/apiv1/dsns/{dsn}/properties/{property_name}.json"
-        async with self._session.get(url, headers=self._auth_headers()) as resp:
+        async with self._session.get(url, headers=self._auth_headers(), timeout=_TIMEOUT) as resp:
             if resp.status != 200:
                 text = await resp.text()
                 raise CloudError(
