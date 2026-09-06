@@ -184,7 +184,11 @@ class DelonghiAylaClient:
                             f"{text[:200]}",
                             http_status=resp.status,
                         ) from err
-            except aiohttp.ClientError as err:
+            # TimeoutError is NOT an aiohttp.ClientError (ServerTimeoutError is,
+            # but that only covers the connect phase), so without it here a total
+            # timeout would escape raw - unretried, and past every caller that
+            # was built to expect CloudError.
+            except (aiohttp.ClientError, TimeoutError) as err:
                 elapsed_ms = (time.monotonic() - started) * 1000
                 last_error = CloudError(
                     f"{op or method} network error after {elapsed_ms:.0f}ms: {err}"
@@ -211,6 +215,7 @@ class DelonghiAylaClient:
         login_url = f"{GIGYA_BASE_URL}/accounts.login"
         async with self._session.post(
             login_url,
+            timeout=_TIMEOUT,
             data={
                 "apiKey": GIGYA_API_KEY,
                 "loginID": self._email,

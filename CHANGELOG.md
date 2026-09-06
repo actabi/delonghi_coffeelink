@@ -5,13 +5,21 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Every Ayla call is now bounded by a 30 s timeout.** The HTTP session comes
-  from Home Assistant and carries no total timeout of its own, so a request the
-  far end accepted and then never answered would hang for as long as it kept the
-  socket open. That was survivable while writes only happened on a user action;
-  the monitor keepalive added in 0.3.21 writes every 15 seconds, which turns an
-  unbounded call into something that can quietly pile up against the poll loop.
-  Nothing observed in the field - hardening a path whose traffic profile changed.
+- **Every Ayla call is now bounded by a 30 s timeout, and a timeout is now
+  retried like any other transient failure.** The session comes from Home
+  Assistant, which inherits aiohttp's 300 s default - not unbounded, but far too
+  long here: a poll makes three calls, so a stalled cloud could hold the
+  integration for a quarter of an hour with nothing surfaced, while the monitor
+  keepalive queued behind it every 15 s. 30 s brings the worst case to about 90 s.
+
+  The half that mattered more than the number: `TimeoutError` is **not** an
+  `aiohttp.ClientError` (`ServerTimeoutError` is, but only covers the connect
+  phase), so a total timeout would have escaped the retry loop entirely and
+  reached callers built to expect `CloudError`. It is caught where the retry
+  logic already lives, so a timeout now retries and degrades like a 504.
+
+  Nothing observed in the field prompted this - hardening a path whose traffic
+  profile changed by two orders of magnitude in 0.3.21.
 
 ## [0.3.21] - 2026-09-05
 
