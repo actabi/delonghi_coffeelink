@@ -186,16 +186,31 @@ def test_triples_refuse_a_partial_walk():
 # --- what the machine says it can make ------------------------------------- #
 
 
-def test_each_profile_has_an_ordered_short_list_of_fixed_size(cat: dict):
-    """5 profiles, 18 entries each, ordered differently.
+def test_every_byte_after_the_profile_is_a_beverage_id(cat: dict, full_cat: dict):
+    """The off-by-one this file now exists to prevent.
 
-    18 on every profile of every dump is what makes it look like a capacity
-    rather than a count - see the drift test below.
+    The payload is `<profile> <bevid...>` with NO header byte, so reading the
+    ids from `payload[2:]` eats each list's first entry. That shipped once: it
+    reported the bean-system drink as absent from every list when the machine
+    puts it first on all five, and it manufactured a "the contents drift between
+    dumps" finding out of nothing.
+
+    Two independent guards, because a length assertion alone would pass a parser
+    that dropped the first id and gained a phantom at the end.
     """
-    priority = cat["priority_lists"]
-    assert sorted(priority) == [1, 2, 3, 4, 5]
-    assert {len(ids) for ids in priority.values()} == {18}
-    assert len({tuple(ids) for ids in priority.values()}) > 1, "ordered differently"
+    for catalogue in (cat, full_cat):
+        priority = catalogue["priority_lists"]
+        assert sorted(priority) == [1, 2, 3, 4, 5]
+        assert {len(ids) for ids in priority.values()} == {19}
+        # Every entry is an id the machine also declares elsewhere. A stray
+        # header byte would not satisfy this.
+        declared = catalog.catalog_beverage_ids(catalogue)
+        for ids in priority.values():
+            assert set(ids) <= declared, "a list entry that no descriptor declares"
+
+    # And the one that pins the boundary directly: the bean system leads every
+    # list on the reference machine, which is exactly the byte an off-by-one eats.
+    assert cat["beverages"][0xC8]["priority_position"] == {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
 
 def test_being_in_no_short_list_does_not_mean_the_drink_is_unavailable(cat: dict):
@@ -203,14 +218,18 @@ def test_being_in_no_short_list_does_not_mean_the_drink_is_unavailable(cat: dict
 
     long_black, mug_to_go and brew_over_ice sit in none of the five lists, and it
     would be easy to read that as "this machine cannot make them" and hide their
-    buttons. Doppio+ is the counter-example that forbids it: absent from three of
-    the five lists in the production dump, absent from all five in this one, and
-    brewed 823 times on the very same machine.
+    buttons. They are the counter-example to that reading: all three carry a
+    factory descriptor, a recipe on every profile and a lifetime counter, so the
+    machine plainly knows them. Membership is an ordering, not a capability.
     """
     unlisted = {i for i, item in cat["beverages"].items() if item["in_priority_list"] is False}
     assert {0x19, 0x1A, 0x1B} <= unlisted
+    for bev_id in (0x19, 0x1A, 0x1B):
+        item = cat["beverages"][bev_id]
+        assert item["declared"] is True, "the machine carries a factory descriptor for it"
+        assert item["profiles"], "and a recipe on every profile"
     listed = [i for i, item in cat["beverages"].items() if item["in_priority_list"] is True]
-    assert len(listed) == 18
+    assert len(listed) == 19
 
 
 def test_in_priority_list_is_unknown_only_when_no_list_was_read():
@@ -611,7 +630,7 @@ def test_name_blobs_are_filed_by_family_and_slot():
 def test_summary_reports_every_counter(cat: dict):
     """Spot-checking three substrings let the other five counters mutate freely."""
     assert catalog.catalog_summary(cat) == (
-        "28 beverage ids (18 in a profile short list, 10 in none, "
+        "28 beverage ids (19 in a profile short list, 9 in none, "
         "6 custom slots of which 0 programmed), 8 with factory min/default/max "
         "ranges, 5 profile lists | blobs=194 crc_ok=163 crc_failed=0 "
         "truncated=31 unparsed=0 short=0"
@@ -825,24 +844,52 @@ def test_the_bean_system_drink_carries_a_real_schema(full_cat: dict):
     assert bean["in_priority_list"] is True, "it is in three of the five lists"
 
 
-def test_the_short_lists_drift_between_two_dumps_of_one_machine(cat: dict, full_cat: dict):
-    """The evidence that 18 is a capacity and the lists are a selection.
+def test_the_lists_reorder_between_dumps_but_never_change_membership(cat: dict, full_cat: dict):
+    """What actually moves between two dumps of one machine: the order, only.
 
-    Same machine, two dumps. Both times every profile holds exactly 18 entries.
-    But profiles 1, 4 and 5 swapped Doppio+ out for the bean-system drink between
-    them, while 2 and 3 kept Doppio+ and never carried the bean system.
-
-    A fixed size with moving contents is what a carousel looks like, not what a
-    capability list looks like - which is why nothing in this module treats
-    membership as proof that a drink exists.
+    This test previously asserted the opposite - that membership drifted - and
+    it passed, because the parser was eating each list's first entry and
+    manufacturing the difference. All ten lists carry the same 19 ids; profiles
+    1, 4 and 5 differ between the dumps by two adjacent transpositions each,
+    which is what a most-recently-used ordering looks like.
     """
-    assert {len(ids) for ids in cat["priority_lists"].values()} == {18}
-    assert {len(ids) for ids in full_cat["priority_lists"].values()} == {18}
+    sets = [frozenset(ids) for ids in cat["priority_lists"].values()]
+    sets += [frozenset(ids) for ids in full_cat["priority_lists"].values()]
+    assert len(set(sets)) == 1, "one membership set across ten lists"
+    assert len(sets[0]) == 19
 
-    def profiles_holding(catalogue: dict, bev_id: int) -> set:
-        return set(catalogue["beverages"][bev_id]["priority_position"])
+    def order(catalogue: dict, profile: int) -> list:
+        return catalogue["priority_lists"][profile]
 
-    assert profiles_holding(cat, 0x05) == {1, 2, 3, 4, 5}, "Doppio+ was on every list"
-    assert profiles_holding(full_cat, 0x05) == {2, 3}, "and later on only two"
-    assert profiles_holding(cat, 0xC8) == set(), "the bean system was on none"
-    assert profiles_holding(full_cat, 0xC8) == {1, 4, 5}, "and later took the free slots"
+    for profile in (2, 3):
+        assert order(cat, profile) == order(full_cat, profile), "these two never moved"
+    for profile in (1, 4, 5):
+        before, after = order(cat, profile), order(full_cat, profile)
+        assert before != after, "these reordered"
+        assert sorted(before) == sorted(after), "without gaining or losing a drink"
+        moved = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
+        assert moved == [0, 1, 4, 5], "two adjacent swaps, nothing else"
+
+
+def test_a_single_entry_list_is_read_not_discarded():
+    """The smallest possible list: one profile byte, one beverage id.
+
+    `_MIN_PAYLOAD[FAMILY_PRIORITY]` has to be 1, not 2. At 2 this frame clears
+    the guard and then parses to an empty list, which reports a confident "not
+    selected" for the only drink the machine selected - the exact shape of lie
+    this module exists to avoid.
+    """
+    blob = _blob(catalog.FAMILY_PRIORITY, bytes([1, 0x07]))
+    cat = catalog.build_catalog({"d261_1_rec_priority": {"value": blob}})
+    assert cat["priority_lists"] == {1: [0x07]}
+    assert cat["beverages"][0x07]["in_priority_list"] is True
+    assert cat["stats"]["short_payloads"] == 0
+    assert "1 in a profile short list" in catalog.catalog_summary(cat)
+
+
+def test_a_priority_blob_with_no_ids_at_all_is_refused():
+    """A profile byte and nothing else says nothing, so it must not say "none"."""
+    blob = _blob(catalog.FAMILY_PRIORITY, bytes([1]))
+    cat = catalog.build_catalog({"d261_1_rec_priority": {"value": blob}})
+    assert cat["priority_lists"] == {1: []}
+    assert cat["stats"]["short_payloads"] == 0

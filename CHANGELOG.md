@@ -57,27 +57,36 @@ All notable changes to this project will be documented in this file.
     unknown-model fallback: same command dialect, which does generalise, without
     the keepalive, which does not.
 
-- **Correction to a claim shipped in 0.3.20: the `a8f0` lists are not the
-  machine's menu.** The release notes said the reference machine "actually
-  offers" 18 drinks and that three of the buttons shipped for it were therefore
-  fiction. That reading was wrong, and the machine's owner is what disproved it:
-  he can see Doppio+ on the machine's own screen, and its lifetime counter reads
-  **823 brews** - yet it appears in none of the five lists in one dump and in
-  only two of them in another.
+- **The `a8f0` priority lists were parsed one byte short, and the correction
+  that renamed them rested on that mistake.** Two rounds on the same three
+  frames, so both are worth recording.
 
-  What the lists actually are: a per-profile ordered *short list* of fixed size.
-  Every profile holds exactly 18 entries in every dump, and the contents move -
-  between two dumps of the same machine, profiles 1, 4 and 5 dropped Doppio+ and
-  picked up the bean-system drink, while 2 and 3 kept Doppio+ and never had the
-  bean system. Fixed size with moving contents is a carousel, not a capability
-  list.
+  0.3.20 called these lists the machine's menu and concluded that three of the
+  buttons shipped for the reference machine were fiction. The machine's owner
+  disproved it by looking at the machine: Doppio+ is on its screen and has a
+  lifetime counter well into the hundreds, yet the parser placed it in no list.
+  Hence the rename to `in_priority_list` / `priority_lists` /
+  `priority_position`, and the rule that membership proves nothing either way.
 
-  So `on_menu` is now `in_priority_list`, `menu` is `priority_lists`,
-  `menu_position` is `priority_position`, and the docstrings say plainly that
-  membership proves nothing in either direction. No entity or datapoint changes:
-  nothing consumed these fields yet, which is the only reason the wrong reading
-  cost documentation rather than hidden buttons. A test pins the drift between
-  the two dumps so the convenient interpretation cannot come back.
+  That rule stands. Its stated evidence does not. The payload is
+  `<profile> <bevid...>` with **no header byte**, and the parser read the ids
+  from `payload[2:]`, eating each list's first entry. Decoding the raw frames:
+  every list is 19 entries, not 18, and all ten (five profiles, two dumps)
+  carry one identical set of ids. The reported "contents move between dumps"
+  was the off-by-one; what actually differs is the order, by two adjacent
+  transpositions on three profiles - a most-recently-used ordering. The
+  bean-system drink was reported as absent from every list while the machine
+  puts it **first on all five**.
+
+  Membership still is not an existence test, and now for a reason that survives
+  checking: `0x19`, `0x1a` and `0x1b` each have a factory descriptor, a recipe
+  on every profile and a lifetime counter, and appear in no list at all.
+
+  No entity or datapoint changes - nothing consumes these fields yet, which is
+  the only reason two wrong readings cost documentation rather than hidden
+  buttons. The tests that pinned the artefact have been replaced by ones that
+  fail if the first entry is ever dropped again, including the one-entry list
+  that the old `_MIN_PAYLOAD` of 2 would have parsed as empty.
 
 ### Changed
 - **`_slot_is_defined` no longer checks the `0xff` intensity marker.** A slot
