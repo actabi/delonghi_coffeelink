@@ -17,7 +17,7 @@ family       n     meaning
 ===========  ====  ==============================================================
 ``b0 f0``    28    factory descriptor - the capability schema (min/default/max)
 ``a6 f0``    140   per-profile instance - the current value of each parameter
-``a8 f0``    5     a per-profile ordered short list, 18 slots (see below)
+``a8 f0``    5     a per-profile ordered short list of beverage ids
 ``a4 f0``    2     profile names (UTF-16BE, user-entered)
 ``aa f0``    2     custom-recipe slot names
 ``ba f0``    7     bean-system names
@@ -28,16 +28,22 @@ the PIN (``95 0f``), the monitor blob (``75 0f``) and the command-response
 channel (``a9 f0``). They are deliberately out of scope here, and out of the
 diagnostic dump too - see ``command_builder.recipe_dump_lines``.
 
-What the ``a8f0`` lists are NOT: the set of drinks the machine can make. Every
-list is exactly 18 entries long on the reference machine, on all five profiles,
-which makes 18 look like a capacity rather than a count - and the contents move.
-Two dumps of the same machine, days apart, disagree: profiles 1, 4 and 5 dropped
-Doppio+ and gained the bean-system drink, while profiles 2 and 3 kept Doppio+
-and never had the bean system. Doppio+ has been brewed 823 times on that
-machine. So a drink can be absent from all five lists and still be the second
-most-used drink in the household. Treat these lists as an ordered short list per
-profile - a carousel, a favourites row, something of that shape - and never as
-proof that a drink exists or does not.
+What the ``a8f0`` lists are NOT: the set of drinks the machine can make. On the
+reference machine all ten lists (five profiles, two dumps taken days apart)
+carry one identical set of 19 ids in four different orders, and between the two
+dumps profiles 1, 4 and 5 changed order only - two adjacent transpositions each,
+which is what a recency ordering looks like. Meanwhile three drinks that have
+factory descriptors, per-profile recipes and lifetime counters (``0x19``
+long_black, ``0x1a`` mug_to_go, ``0x1b`` brew_over_ice) appear in no list at
+all. So membership is not evidence in either direction: it is an ordered short
+list per profile, and a drink can be missing from every one of them and still be
+brewable.
+
+That caution is not theoretical. An earlier version of this parser read the ids
+from ``payload[2:]``, assuming a header byte the frames do not have, and so ate
+each list's first entry. It reported the bean-system drink as absent from every
+list when the machine puts it first on all five, and the resulting "the contents
+move between dumps" was an artefact of the off-by-one rather than a finding.
 
 Two rules make the whole thing parseable without per-beverage special cases:
 
@@ -132,7 +138,7 @@ TAG_INTENSITY = 0x02
 _MIN_PAYLOAD = {
     FAMILY_DESCRIPTOR: 1,
     FAMILY_PROFILE_RECIPE: 2,
-    FAMILY_PRIORITY: 2,
+    FAMILY_PRIORITY: 1,  # <profile>, then ids; a one-entry list is 2 bytes
     FAMILY_PROFILE_NAMES: 2,
     FAMILY_CUSTOM_NAMES: 2,
     FAMILY_BEAN_NAMES: 2,
@@ -428,8 +434,11 @@ def build_catalog(props: dict) -> dict:
             else:
                 item["profiles"][profile] = params
         elif family == FAMILY_PRIORITY:
+            # payload = <profile> <bevid...>. There is NO header byte after the
+            # profile: every remaining byte is a beverage id. Reading from [2:]
+            # silently ate each list's first entry - see the module docstring.
             profile = payload[0]
-            priority[profile] = list(payload[2:])
+            priority[profile] = list(payload[1:])
         elif family in (FAMILY_PROFILE_NAMES, FAMILY_CUSTOM_NAMES, FAMILY_BEAN_NAMES):
             bucket = {
                 FAMILY_PROFILE_NAMES: "profiles",
@@ -459,11 +468,10 @@ def _apply_priority(beverages: dict[int, dict], priority: dict[int, list[int]]) 
     """Record which drinks appear in each profile's ordered short list.
 
     ``in_priority_list`` says exactly that and nothing more. It is not an
-    existence test in either direction: the lists hold a fixed 18 entries and
-    their contents change over time, so a drink can be absent from all of them
-    and still be brewed daily. Doppio+ is the proof - 823 brews on the reference
-    machine, absent from three of the five lists, and absent from all five in an
-    earlier dump.
+    existence test in either direction: ``0x19``, ``0x1a`` and ``0x1b`` have
+    factory descriptors, per-profile recipes and lifetime counters on the
+    reference machine and appear in none of its five lists, so absence proves
+    nothing about what the machine can brew.
 
     It stays ``None`` where no list was read at all, so "no opinion" and "not
     selected" never collapse into the same answer.
