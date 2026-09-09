@@ -1,3 +1,26 @@
+## [Unreleased]
+
+### Fixed
+- **Hassfest rejected `services.yaml`, so CI has been red since 0.3.24.** The
+  per-device targeting added there filtered the target block by device:
+
+  ```yaml
+  target:
+    device:
+      integration: delonghi_coffeelink
+  ```
+
+  Home Assistant does not allow that. `script/hassfest/services.py` refuses any
+  `device` key under `target` outright - "Services do not support device filters
+  on target, use a device selector instead" - and it said so for all three
+  services. The filter is now on `entity`, which is what core's own integrations
+  use for the same job (see `reolink/services.yaml`).
+
+  No behaviour changes. The block only filters what the UI target picker offers;
+  the handler reads `device_id`, `entity_id`, `area_id`, `floor_id` and
+  `label_id` straight out of `call.data` and resolves them itself, so picking a
+  machine still sends `device_id` exactly as before.
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

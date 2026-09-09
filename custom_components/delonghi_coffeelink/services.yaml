@@ -1,6 +1,6 @@
 start_beverage:
   target:
-    device:
+    entity:
       integration: delonghi_coffeelink
   fields:
     beverage:
@@ -34,7 +34,7 @@ start_beverage:
 
 stop_beverage:
   target:
-    device:
+    entity:
       integration: delonghi_coffeelink
   fields:
     beverage:
@@ -53,7 +53,7 @@ stop_beverage:
 
 send_raw_command:
   target:
-    device:
+    entity:
       integration: delonghi_coffeelink
   fields:
     value_base64:
