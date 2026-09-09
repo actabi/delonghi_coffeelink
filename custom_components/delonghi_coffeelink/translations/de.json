@@ -254,6 +254,9 @@
       },
       "dump_recipes": {
         "name": "Rezept-Datenpunkte protokollieren"
+      },
+      "set_profile": {
+        "name": "Profil {profile}"
       }
     },
     "binary_sensor": {
@@ -348,6 +351,9 @@
     },
     "target_matched_no_machine": {
       "message": "Das Ziel dieser Aktion enthält keine De'Longhi-Kaffeemaschine. Verfügbare Maschinen: {machines}."
+    },
+    "unknown_profile": {
+      "message": "{name} hat kein Benutzerprofil {profile}. Profile, die diese Maschine bereitstellt: {known}."
     }
   }
 }

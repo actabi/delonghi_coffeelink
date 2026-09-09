@@ -36,7 +36,11 @@ from .coordinator import DelonghiCoordinator, async_send_to_each
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+]
 
 BEVERAGE_KEYS = [b[1] for b in BEVERAGES]
 

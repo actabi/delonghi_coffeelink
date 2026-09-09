@@ -128,7 +128,7 @@ def _install_stubs() -> None:
     config_entries = types.ModuleType("homeassistant.config_entries")
     config_entries.ConfigEntry = object
     ha_const = types.ModuleType("homeassistant.const")
-    ha_const.EntityCategory = types.SimpleNamespace(DIAGNOSTIC="diagnostic")
+    ha_const.EntityCategory = types.SimpleNamespace(DIAGNOSTIC="diagnostic", CONFIG="config")
     device_registry = types.ModuleType("homeassistant.helpers.device_registry")
     device_registry.DeviceInfo = dict
     entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
@@ -388,6 +388,7 @@ SEND_CALLS = (
     ("standby", lambda coord: coord.async_send_standby()),
     ("beverage start", lambda coord: coord.async_send_beverage(0x01, const.ACTION_START)),
     ("beverage stop", lambda coord: coord.async_send_beverage(0x10, const.ACTION_STOP)),
+    ("profile", lambda coord: coord.async_send_profile(1)),
 )
 # Both families: the Soul synthesizes its frames, the Eletta replays learned ones
 # behind a cloud session. Neither may reach the cloud while the machine is gone.
@@ -1619,3 +1620,225 @@ def test_a_stale_datapoint_still_decodes_and_does_not_fail_the_poll():
     coord = _polled(_aged_monitor_props(44 * 3600))
     assert coord.monitor.get("status_name") == "standby"
     assert coord.monitor_is_stale is True
+
+
+# --- user profile: sending the switch (one button per profile) ---------------
+#
+# The official app switches the machine's active profile with one a9f0 frame;
+# fixtures/soul_properties.json caught one such write:
+#   data_request  = 0d 06 a9 f0 01 d7 c0 69 e8 c5 ee   (app -> machine, slot 1)
+# What comes back is deliberately not tracked: a profile changed on the
+# machine's own panel produces no cloud traffic at all (proven on the reference
+# PrimaDonna Soul, 2026-09-09), so nothing here may claim to know which profile
+# is active. Hence buttons that only send, and no select.
+
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "soul_properties.json"
+
+
+def _fixture_props() -> dict:
+    return jsonlib.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+def _soul_with_catalog(client=None, connection_status: str = "Online"):
+    coord = _coord("DL-millcore", connection_status=connection_status, client=client)
+    coord.catalog = catalog.build_catalog(_fixture_props())
+    coord.response_property = "data_response"
+    return coord
+
+
+def _soul_with_names(client=None):
+    """Three named profiles, five witnessed slots - the reference machine."""
+    coord = _soul_with_catalog(client)
+    coord.catalog["names"]["profiles"] = {1: "Anna", 2: "Bertil", 3: "Guest"}
+    coord.catalog["profile_slots"] = [1, 2, 3]
+    return coord
+
+
+def test_soul_sends_the_app_frame_for_the_chosen_slot():
+    """Byte parity with the app: only the profile byte and the CRC move."""
+    client = _RecordingClient()
+    coord = _soul_with_catalog(client)
+
+    asyncio.run(coord.async_send_profile(3))
+
+    assert len(client.writes) == 1
+    dsn, prop, value = client.writes[0]
+    assert (dsn, prop) == (coord.device.dsn, "data_request")
+    assert base64.b64decode(value)[:7].hex(" ") == "0d 06 a9 f0 03 f7 82"
+    assert value in coord._sent_values  # the echo must not read as app traffic
+
+
+@pytest.mark.parametrize("slot", [1, 2, 3, 4, 5])
+def test_every_fixture_slot_has_the_pinned_crc(slot):
+    crcs = {1: "d7 c0", 2: "e7 a3", 3: "f7 82", 4: "87 65", 5: "97 44"}
+    client = _RecordingClient()
+    coord = _soul_with_catalog(client)
+    asyncio.run(coord.async_send_profile(slot))
+    assert base64.b64decode(client.writes[0][2])[5:7].hex(" ") == crcs[slot]
+
+
+def test_a_slot_the_machine_never_declared_is_refused_before_any_write():
+    client = _RecordingClient()
+    coord = _soul_with_catalog(client)
+
+    with pytest.raises(_StubHomeAssistantError) as err:
+        asyncio.run(coord.async_send_profile(9))
+
+    assert err.value.translation_key == "unknown_profile"
+    assert err.value.translation_domain == const.DOMAIN
+    assert err.value.translation_placeholders == {
+        "name": "Coffee Maker", "profile": "9", "known": "1, 2, 3, 4, 5",
+    }
+    assert client.writes == []
+
+
+def test_without_a_catalogue_the_machine_decides():
+    """No slot list means no gate - refusing would make the buttons unusable on
+    a machine whose recipe blobs were simply unreadable."""
+    client = _RecordingClient()
+    coord = _coord("DL-millcore", client=client)
+    assert coord.user_profile_slots() == []
+
+    asyncio.run(coord.async_send_profile(9))
+
+    assert base64.b64decode(client.writes[0][2])[4] == 9
+
+
+def test_a_profile_byte_the_wire_cannot_carry_is_refused_the_same_way():
+    client = _RecordingClient()
+    coord = _coord("DL-millcore", client=client)
+    with pytest.raises(_StubHomeAssistantError) as err:
+        asyncio.run(coord.async_send_profile(300))
+    assert err.value.translation_key == "unknown_profile"
+    assert client.writes == []
+
+
+def test_a_switch_to_a_slot_the_display_does_not_offer_is_refused():
+    """Slot 4 is witnessed (recipes, priority list) but unnamed, so the machine
+    does not offer it and no button exists for it either."""
+    client = _RecordingClient()
+    coord = _soul_with_names(client)
+    with pytest.raises(_StubHomeAssistantError) as err:
+        asyncio.run(coord.async_send_profile(4))
+    assert err.value.translation_placeholders["known"] == "1, 2, 3"
+    assert client.writes == []
+
+
+def test_the_unknown_profile_error_never_lists_nothing():
+    coord = _coord("DL-millcore")
+    err = coord.unknown_profile_error(300, [])
+    assert err.translation_placeholders["known"] == "none declared"
+
+
+def test_eletta_profile_frame_carries_the_machine_signature():
+    """Built like standby: the learned device signature rides in the tail."""
+    coord = _coord("DL-striker-cb")
+    coord._maybe_learn_frame(_decoded(COFFEE_FRAME))
+    value = coord._profile_command_value(2, 0x69E8C5EE)
+    raw = base64.b64decode(value)
+    assert raw[:7].hex(" ") == "0d 06 a9 f0 02 e7 a3"
+    assert raw[7:11] == (0x69E8C5EE).to_bytes(4, "big")
+    assert raw[-4:] == COFFEE_SIGNATURE
+    assert len(raw) == 15
+
+
+def test_eletta_online_switch_goes_through_the_command_channel():
+    client = _RecordingClient()
+    coord = _coord("DL-striker-cb", client=client)
+    coord._maybe_learn_frame(_decoded(COFFEE_FRAME))
+    coord.command_property = "app_data_request"
+    coord._last_connect_at = time.time()  # a fresh session: no cold connect needed
+
+    asyncio.run(coord.async_send_profile(2))
+
+    profile_writes = [w for w in client.writes if w[1] == "app_data_request"]
+    assert len(profile_writes) == 1
+    raw = base64.b64decode(profile_writes[0][2])
+    assert raw[:5].hex(" ") == "0d 06 a9 f0 02"
+    assert raw[-4:] == COFFEE_SIGNATURE
+
+
+def test_an_app_profile_frame_is_captured_but_never_learned_as_a_beverage():
+    coord = _coord("DL-striker-cb")
+    frame = cb.build_profile_encoded(3, timestamp=0x69E8C5EE, signature=COFFEE_SIGNATURE)
+    _capture(coord, frame)
+    assert coord.last_captured_command["type"] == "profile"
+    assert coord.last_captured_command["profile"] == 3
+    assert coord.last_captured_command["origin"] == "app"
+    assert coord.last_captured_command["matches_integration"] is True
+    assert coord.learned_start_frames == {}
+    assert coord.learned_stop_frames == {}
+    assert coord.learned_wake_frame is None
+
+
+# --- profile buttons ---------------------------------------------------------
+
+def _profile_buttons(coord) -> list:
+    entry = types.SimpleNamespace(entry_id="entry-1")
+    hass = types.SimpleNamespace(data={const.DOMAIN: {entry.entry_id: [coord]}})
+    added: list = []
+    asyncio.run(button.async_setup_entry(hass, entry, added.extend))
+    return [e for e in added if isinstance(e, button.DelonghiSetProfileButton)]
+
+
+def test_setup_adds_one_button_per_offered_profile():
+    coord = _soul_with_catalog()
+    buttons = _profile_buttons(coord)
+
+    assert [b._slot for b in buttons] == [1, 2, 3, 4, 5]
+    assert [b._attr_translation_placeholders for b in buttons] == [
+        {"profile": f"Profile {slot}"} for slot in (1, 2, 3, 4, 5)
+    ]
+    assert [b._attr_unique_id for b in buttons] == [
+        f"{coord.device.dsn}_set_profile_{slot}" for slot in (1, 2, 3, 4, 5)
+    ]
+    assert {b._attr_translation_key for b in buttons} == {"set_profile"}
+    assert {b._attr_entity_category for b in buttons} == {"config"}
+
+
+def test_only_the_profiles_the_display_offers_get_a_button():
+    """Five slots are witnessed, three are named: the machine offers three."""
+    coord = _soul_with_names()
+    buttons = _profile_buttons(coord)
+    assert [b._slot for b in buttons] == [1, 2, 3]
+    assert [b._attr_translation_placeholders["profile"] for b in buttons] == [
+        "Anna", "Bertil", "Guest",
+    ]
+
+
+def test_a_machine_that_declares_no_profiles_gets_no_profile_buttons():
+    coord = _coord("DL-millcore")
+    assert coord.user_profile_slots() == []
+    assert _profile_buttons(coord) == []
+
+
+def test_pressing_a_profile_button_sends_that_slot():
+    client = _RecordingClient()
+    coord = _soul_with_catalog(client)
+    entity = button.DelonghiSetProfileButton(coord, 3, "Profile 3")
+
+    asyncio.run(entity.async_press())
+
+    assert len(client.writes) == 1
+    assert base64.b64decode(client.writes[0][2])[:7].hex(" ") == "0d 06 a9 f0 03 f7 82"
+
+
+def test_a_profile_button_is_pressable_across_a_failed_poll():
+    """A button claims to know nothing, so a cloud hiccup cannot make it lie -
+    the only refusal is the coordinator's own reachability preflight."""
+    coord = _soul_with_catalog(_RecordingClient())
+    coord.last_update_success = False
+    entity = button.DelonghiSetProfileButton(coord, 2, "Profile 2")
+
+    asyncio.run(entity.async_press())
+
+    assert len(coord.client.writes) == 1
+
+
+def test_pressing_a_profile_button_refuses_an_offline_machine():
+    coord = _soul_with_catalog(_RecordingClient(), connection_status="Offline")
+    entity = button.DelonghiSetProfileButton(coord, 2, "Profile 2")
+    with pytest.raises(_StubHomeAssistantError) as err:
+        asyncio.run(entity.async_press())
+    assert err.value.translation_key == "machine_offline"
+    assert coord.client.writes == []

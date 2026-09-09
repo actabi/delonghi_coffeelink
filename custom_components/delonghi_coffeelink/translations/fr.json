@@ -254,6 +254,9 @@
       },
       "dump_recipes": {
         "name": "Exporter les datapoints recettes"
+      },
+      "set_profile": {
+        "name": "Profil {profile}"
       }
     },
     "binary_sensor": {
@@ -348,6 +351,9 @@
     },
     "target_matched_no_machine": {
       "message": "La cible de cette action ne contient aucune machine à café De'Longhi. Machines disponibles : {machines}."
+    },
+    "unknown_profile": {
+      "message": "{name} n'a pas de profil utilisateur {profile}. Profils exposés par cette machine : {known}."
     }
   }
 }

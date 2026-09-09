@@ -254,6 +254,9 @@
       },
       "dump_recipes": {
         "name": "Logga receptdatapunkter"
+      },
+      "set_profile": {
+        "name": "Profil {profile}"
       }
     },
     "binary_sensor": {
@@ -348,6 +351,9 @@
     },
     "target_matched_no_machine": {
       "message": "Målet för den här åtgärden innehåller ingen De'Longhi-kaffemaskin. Tillgängliga maskiner: {machines}."
+    },
+    "unknown_profile": {
+      "message": "{name} har ingen användarprofil {profile}. Profiler maskinen exponerar: {known}."
     }
   }
 }

@@ -7,9 +7,11 @@ import time
 from collections.abc import Iterable
 
 from .const import (
+    ACTIVE_PROFILE_PROPERTY,
     BEVERAGES,
     CMD_FAMILY_BREW,
     CMD_FAMILY_POWER,
+    CMD_FAMILY_PROFILE,
     CMD_LENGTH,
     CMD_PREFIX,
     CMD_RESPONSE_PREFIX,
@@ -216,7 +218,7 @@ def recipe_dump_lines(props: dict) -> list[str]:
         prop = props.get(name)
         value = prop.get("value") if isinstance(prop, dict) else prop
         raw = _dumpable_blob(value)
-        if raw is None and "_rec_" not in name and name != "d286_mach_sett_profile":
+        if raw is None and "_rec_" not in name and name != ACTIVE_PROFILE_PROPERTY:
             continue
         if raw is not None:
             lines.append(_render_blob(name, raw))
@@ -361,6 +363,102 @@ def build_standby_encoded(signature: bytes | None = None) -> str:
     return encode_command(build_standby_command(signature=signature))
 
 
+def build_profile_command(
+    profile_id: int, timestamp: int | None = None, signature: bytes | None = None
+) -> bytes:
+    """
+    Build the "switch active user profile" command (0xa9 0xf0).
+
+    Frame: 0d 06 a9 f0 <profile> <crc16> <timestamp> [<device signature 4B>]
+    Length byte = 0x06: frame size through the CRC (7 bytes) minus the start
+    byte, the same rule 0x07 follows for the 8-byte power frame. Proof:
+    tests/fixtures/soul_properties.json ``data_request`` is
+    ``0d 06 a9 f0 01 d7 c0 69 e8 c5 ee`` - profile 1, written by the official
+    app, and this builder reproduces it byte for byte. As with power frames the
+    optional signature goes AFTER the timestamp, so the CRC is unaffected.
+
+    ``profile_id`` is the machine's 1-based slot (1..5 on a five-profile Soul);
+    the wire field is one byte, so 1..255 is the only range this checks.
+    """
+    if not isinstance(profile_id, int) or not 1 <= profile_id <= 255:
+        raise ValueError(f"profile_id must be 1..255, got {profile_id!r}")
+    if timestamp is None:
+        timestamp = int(time.time())
+    header = bytes(
+        [CMD_PREFIX, 0x06, CMD_FAMILY_PROFILE[0], CMD_FAMILY_PROFILE[1], profile_id]
+    )
+    crc = crc16_aug_ccitt(header)
+    frame = header + crc.to_bytes(2, "big") + timestamp.to_bytes(4, "big")
+    if signature:
+        frame += signature
+    return frame
+
+
+def build_profile_encoded(
+    profile_id: int, timestamp: int | None = None, signature: bytes | None = None
+) -> str:
+    """Shortcut: build profile command + base64 encode (same argument order)."""
+    return encode_command(
+        build_profile_command(profile_id, timestamp=timestamp, signature=signature)
+    )
+
+
+def build_profile_with_session_tail_encoded(
+    profile_id: int, app_id: str | int | None, timestamp: int | None = None
+) -> str:
+    """Profile switch with the cloud session id in the 4-byte tail (DlghIoT).
+
+    Mirrors :func:`build_standby_with_session_tail_encoded`: the tail is the
+    app id as signed int32 BE. ``app_id`` may arrive as the decimal string the
+    machine property holds; ``None`` means "no session" and yields the plain
+    frame without a tail.
+    """
+    if app_id is None:
+        return build_profile_encoded(profile_id, timestamp=timestamp)
+    tail = _session_id_to_tail_bytes(int(str(app_id).strip()))
+    return build_profile_encoded(profile_id, timestamp=timestamp, signature=tail)
+
+
+def parse_profile_response(value: str | bytes | None) -> dict | None:
+    """Parse the machine's answer to a profile switch, or ``None``.
+
+    Reply frame: ``d0 07 a9 f0 <profile> <status> <crc16> [<unix ts 4B>]``.
+    Accepts the base64 string as Ayla returns it (whitespace tolerated, like
+    :func:`decode_command`) or the raw bytes. Anything that is not exactly
+    this shape - too short, wrong prefix, wrong length byte, another family on
+    the shared response channel, or a CRC that does not check out - is
+    ``None``, never an exception: the caller polls this every cycle and a
+    junk value must not break the poll.
+
+    A non-zero ``status`` is returned as-is, not hidden: it is the machine
+    saying it refused the switch (0x01 seen for a guest profile), and the
+    coordinator needs that to roll back its optimistic state.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        raw = bytes(value)
+    elif isinstance(value, str):
+        try:
+            raw = base64.b64decode("".join(value.split()), validate=True)
+        except (ValueError, binascii.Error):
+            return None
+    else:
+        return None
+    if (
+        len(raw) < 8
+        or raw[0] != CMD_RESPONSE_PREFIX
+        or raw[1] != 0x07
+        or raw[2:4] != CMD_FAMILY_PROFILE
+    ):
+        return None
+    if crc16_aug_ccitt(raw[0:6]) != int.from_bytes(raw[6:8], "big"):
+        return None
+    return {
+        "profile": raw[4],
+        "status": raw[5],
+        "timestamp": int.from_bytes(raw[8:12], "big") if len(raw) >= 12 else None,
+    }
+
+
 def device_signature_from_frame(frame_b64: str | None) -> bytes | None:
     """Extract the 4-byte device signature from a learned app frame.
 
@@ -476,9 +574,11 @@ def is_wake_power_frame(decoded: dict) -> bool:
 def decode_command(value_b64: str) -> dict:
     """Decode a base64 command/response payload into a human-readable dict.
 
-    Recognises the two app->machine frame families this integration emits
-    (brew ``0x83 0xf0`` and power/wake ``0x84 0x0f``) and machine->app
-    responses (prefix ``0xd0``). Unknown shapes still get a hex dump.
+    Recognises the three app->machine frame families this integration emits
+    (brew ``0x83 0xf0``, power/wake ``0x84 0x0f`` and profile switch
+    ``0xa9 0xf0``) and machine->app responses (prefix ``0xd0``); a profile
+    response additionally carries the parsed profile/status. Unknown shapes
+    still get a hex dump.
     """
     if not isinstance(value_b64, str) or not value_b64.strip():
         return {"raw_b64": value_b64, "error": "value is not a non-empty string"}
@@ -546,8 +646,29 @@ def decode_command(value_b64: str) -> dict:
         out["crc_valid"] = crc16_aug_ccitt(raw[0:6]) == int.from_bytes(raw[6:8], "big")
         out["timestamp"] = int.from_bytes(raw[8:12], "big")
         out["structural_b64"] = base64.b64encode(raw[0:8]).decode("ascii")
+    elif raw[0] == CMD_PREFIX and family == CMD_FAMILY_PROFILE and len(raw) >= 7:
+        out["type"] = "profile"
+        out["profile"] = raw[4]
+        # "params" so the Last Captured Command sensor, which keys on it, shows
+        # the one payload byte this frame has.
+        out["params"] = f"{raw[4]:02x}"
+        out["crc"] = raw[5:7].hex(" ")
+        out["crc_valid"] = crc16_aug_ccitt(raw[0:5]) == int.from_bytes(raw[5:7], "big")
+        if len(raw) >= 11:
+            out["timestamp"] = int.from_bytes(raw[7:11], "big")
+        out["structural_b64"] = base64.b64encode(raw[0:7]).decode("ascii")
     elif len(raw) >= 1 and raw[0] == CMD_RESPONSE_PREFIX:
+        # Stays "machine_response" whatever the family: the sniffer and its
+        # tests key on that. A profile reply gets its fields merged in on top.
         out["type"] = "machine_response"
+        if family == CMD_FAMILY_PROFILE and len(raw) >= 8:
+            out["crc"] = raw[6:8].hex(" ")
+            out["crc_valid"] = (
+                crc16_aug_ccitt(raw[0:6]) == int.from_bytes(raw[6:8], "big")
+            )
+            parsed = parse_profile_response(raw)
+            if parsed is not None:
+                out.update(parsed)
     else:
         out["type"] = "unknown"
     return out
@@ -573,6 +694,12 @@ def builder_structural_b64(decoded: dict) -> str | None:
         return base64.b64encode(cmd[0:14]).decode("ascii")
     if kind == "power":
         return base64.b64encode(build_wake_command()[0:8]).decode("ascii")
+    if kind == "profile":
+        try:
+            cmd = build_profile_command(decoded["profile"])
+        except (KeyError, ValueError, TypeError):
+            return None
+        return base64.b64encode(cmd[0:7]).decode("ascii")
     return None
 
 
@@ -594,5 +721,16 @@ def summarize_decoded(decoded: dict) -> str:
         return (
             f"power/wake params=[{decoded.get('params')}] "
             f"crc_valid={decoded.get('crc_valid')}{match_str}"
+        )
+    if kind == "profile":
+        return (
+            f"profile id={decoded.get('profile')} "
+            f"crc_valid={decoded.get('crc_valid')}{match_str}"
+        )
+    if kind == "machine_response" and "status" in decoded:
+        return (
+            f"machine_response profile id={decoded.get('profile')} "
+            f"status={decoded.get('status')} crc_valid={decoded.get('crc_valid')} "
+            f"hex=[{decoded.get('hex')}]"
         )
     return f"{kind} hex=[{decoded.get('hex')}]"

@@ -254,6 +254,9 @@
       },
       "dump_recipes": {
         "name": "Выгрузить datapoints рецептов"
+      },
+      "set_profile": {
+        "name": "Профиль {profile}"
       }
     },
     "binary_sensor": {
@@ -348,6 +351,9 @@
     },
     "target_matched_no_machine": {
       "message": "Цель этого действия не содержит ни одной кофемашины De'Longhi. Доступные машины: {machines}."
+    },
+    "unknown_profile": {
+      "message": "У {name} нет профиля пользователя {profile}. Профили, доступные на этой кофемашине: {known}."
     }
   }
 }

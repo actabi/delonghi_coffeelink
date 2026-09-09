@@ -21,6 +21,7 @@ import time
 
 from .command_builder import (
     build_and_encode,
+    build_profile_encoded,
     build_standby_encoded,
     build_wake_encoded,
     replay_with_timestamp,
@@ -87,6 +88,19 @@ class ModelProfile:
         the synthesized Soul path ignores it.
         """
         return build_standby_encoded()
+
+    def profile_value(
+        self, profile_id: int, signature: bytes | None, timestamp: int | None = None
+    ) -> str | None:
+        """Return the base64 "switch active user profile" value.
+
+        Always synthesized: the frame is a single profile byte plus CRC and
+        timestamp, and the fixture proves the official app writes exactly the
+        same bytes on the Soul. ``signature`` is ignored on this path, as for
+        ``standby_value``. ``timestamp`` is exposed so the coordinator can pin
+        the request time it later compares the machine's reply against.
+        """
+        return build_profile_encoded(profile_id, timestamp=timestamp)
 
 
 class SoulProfile(ModelProfile):
@@ -174,6 +188,23 @@ class ElettaProfile(ModelProfile):
         if signature is None:
             return None
         return build_standby_encoded(signature)
+
+    def profile_value(
+        self, profile_id: int, signature: bytes | None, timestamp: int | None = None
+    ) -> str | None:
+        """Profile switch on the Eletta - untested over the cloud, best effort.
+
+        Mirrors ``standby_value``: the frame is synthesized (the profile frame
+        is one byte of payload, nothing to learn) and the per-device signature
+        is appended after the timestamp because the Eletta ignores power
+        frames without it, so a profile frame most likely needs it too.
+        ``None`` until a frame carrying the signature has been learned, so the
+        caller can fall back explicitly and log it, rather than sending a
+        frame the machine will probably drop in silence.
+        """
+        if signature is None:
+            return None
+        return build_profile_encoded(profile_id, timestamp=timestamp, signature=signature)
 
 
 # Most specific first; the generic default is applied explicitly in profile_for.

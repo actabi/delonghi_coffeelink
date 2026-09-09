@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **A button per user profile switches the machine's active profile** - the same
+  switch the official Coffee Link app offers. One button per profile the machine
+  offers, carrying the household's own name for it (`button.<machine>_profile_anna`),
+  in the config category.
+
+  The frame pair, verified byte for byte against a capture of the official app
+  (`tests/fixtures/soul_properties.json`): the request is
+  `0d 06 a9 f0 <profile> <crc16> <unix ts>` on the command property
+  (`data_request` on the Soul), and the machine answers
+  `d0 07 a9 f0 <profile> <status> <crc16> <ts>` on the response property
+  (`data_response`), `status 00` meaning accepted. In the fixture the request
+  reads exactly `0d 06 a9 f0 01 d7 c0 69 e8 c5 ee` and the reply
+  `d0 07 a9 f0 01 00 3b 3c 69 e8 c5 f0`. The machine's answer to a press shows
+  up on the Last Captured Command sensor, as `last_machine_response_hex`.
+
+  **Buttons rather than a `select`, because the machine will not say which
+  profile is active.** A change made on its own panel produces no cloud traffic
+  whatsoever. Measured on the reference Soul on 2026-09-09, with the machine
+  online and publishing: across a panel switch the monitor blob kept advancing
+  its timestamp (08:37:39, 08:38:11, 08:41:40) while its contents stayed
+  byte-identical at `00 00 00 00 00 07 00 00 00 00 00 00 00`, and both command
+  channels stayed frozen at 08:30:55 and 08:30:56. The three contents bytes
+  nothing decodes are not the profile, and no other datapoint moves either. A
+  `select` exists to show the current option, so it would have shown a value
+  that can be silently wrong for hours - and worse, Home Assistant's dropdown
+  does not re-send the option it already displays, so the one profile you could
+  not set from it would be the one it wrongly believed was already active. A
+  button claims nothing and is always pressable.
+
+  Which profiles get a button: the ones the machine gave a name cell. The name
+  blobs (`a4 f0`, and `aa f0` for custom slots) turn out to be 21-byte cells per
+  slot - 20 bytes of NUL-padded UTF-16BE text plus one metadata byte, an icon id
+  on profiles - read off an untruncated reference Soul on 2026-09-08; the old
+  parser stopped at the first NUL and named slot 1 only. That machine shows
+  three profiles yet publishes recipes and priority lists for five, and its name
+  blob for slots 4-5 is a bare NUL, so those two are firmware capacity rather
+  than choices. A slot with a blank cell still gets a button, labelled with the
+  machine's own default `Profile N`. Only a machine whose name blobs cannot be
+  read at all, such as the truncated reference dump, falls back to a button for
+  every witnessed slot. Pressing a button for a slot the machine does not offer
+  raises `unknown_profile`, naming the ones it does.
+
+  On the Eletta Explore the frame carries the same 4-byte session tail standby
+  carries, but profile switching is **untested** on the Eletta over the cloud.
+  The `a9f0` family stays excluded from the Dump Recipe Datapoints diagnostic.
+
+### Changed
+- **Removed an unused duplicate `PLATFORMS` list from `const.py`.** Two lists
+  with the same name, one of them read by nothing, is exactly how a new platform
+  ends up registered in the wrong one. Only the list `__init__.py` loads remains.
+
 ## [0.3.25] - 2026-09-09
 
 ### Fixed

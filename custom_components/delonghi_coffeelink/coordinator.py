@@ -18,6 +18,8 @@ from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_s
 from .command_builder import (
     app_id_from_signature,
     builder_structural_b64,
+    build_profile_encoded,
+    build_profile_with_session_tail_encoded,
     build_session_refresh_encoded,
     build_standby_encoded,
     build_standby_with_session_tail_encoded,
@@ -38,6 +40,8 @@ from .catalog import (
     build_catalog,
     catalog_beverage_ids,
     catalog_fingerprint,
+    catalog_profile_labels,
+    catalog_profile_slots,
     catalog_summary,
 )
 from .const import (
@@ -400,6 +404,20 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except Exception:  # noqa: BLE001 - diagnostic must never break the poll
             _LOGGER.debug("Beverage catalogue parse failed; keeping previous", exc_info=True)
+
+    def user_profile_slots(self) -> list[int]:
+        """The user-profile slots the machine declared, sorted; empty when unknown."""
+        return catalog_profile_slots(self.catalog)
+
+    def user_profile_labels(self) -> dict[int, str]:
+        """A unique display label per offered slot (see ``catalog_profile_labels``).
+
+        Offered, not merely declared: the reference Soul declares five slots and
+        offers three on its display. One button is created per entry here, and
+        the same set gates what a switch may request, so no button exists for a
+        profile the machine's own display does not list.
+        """
+        return catalog_profile_labels(self.catalog)
 
     def _update_monitor(self, props: dict[str, Any]) -> None:
         """Decode the machine monitor blob (diagnostic; must never break the poll).
@@ -813,6 +831,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _standby_command_value(self) -> str:
         """Build standby frame for ECAM models (session tail). Soul uses main inline path."""
         return build_standby_with_session_tail_encoded(self._integration_app_id)
+
+    def _profile_command_value(self, profile_id: int, ts: int) -> str:
+        """Build profile-switch frame for ECAM models (session tail), like standby."""
+        return build_profile_with_session_tail_encoded(profile_id, self._integration_app_id, ts)
 
     def _session_is_fresh(self, app_id: int | None) -> bool:
         now = time.time()
@@ -1295,6 +1317,86 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         async def _do() -> None:
             value = self._standby_command_value()
             await self._send_property_command(value, "STANDBY cmd")
+
+        await self._with_cloud_session(_do)
+
+    def unknown_profile_error(self, requested: object, slots: list[int]) -> HomeAssistantError:
+        """The error for a profile the machine does not offer, for any caller."""
+        return HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_profile",
+            translation_placeholders={
+                "name": self.device.name or self.device.dsn,
+                "profile": str(requested),
+                "known": ", ".join(map(str, slots)) or "none declared",
+            },
+        )
+
+    async def async_send_profile(self, profile_id: int) -> None:
+        """Switch the machine's active user profile (a9 f0, one profile byte).
+
+        Same frame the official app writes (``0d 06 a9 f0 <p> <crc> <ts>``, see
+        ``build_profile_command``). Validated byte for byte against the app on
+        the reference Soul; on learn-and-replay models the frame is built like
+        standby, with the learned device signature appended, and is best effort
+        until confirmed there.
+
+        The slot is checked against what the machine offers first: a slot its
+        display does not list is refused before anything reaches the cloud.
+        With no catalogue at all (nothing per profile was published) the
+        machine is left to decide.
+
+        Send only: the machine's answer is not tracked. Whatever it leaves on
+        the response channel is visible on the Last Captured Command sensor's
+        ``last_machine_response_hex`` attribute, and that is deliberately as
+        far as it goes - a profile changed on the machine's own panel produces
+        no cloud traffic at all (proven on the reference PrimaDonna Soul,
+        2026-09-09: a panel switch left the monitor bytes and both command
+        channels unchanged while the machine was online and publishing), so any
+        state kept here would be a guess that can stay wrong for hours. Hence
+        buttons, which claim to know nothing, and no select.
+        """
+        slots = sorted(self.user_profile_labels())
+        if slots and profile_id not in slots:
+            raise self.unknown_profile_error(profile_id, slots)
+        self._ensure_machine_reachable()
+        ts = int(time.time())
+
+        if not self.profile.uses_cloud_session:
+
+            async def _do() -> None:
+                try:
+                    value = self.profile.profile_value(
+                        profile_id, self._learned_device_signature(), ts
+                    )
+                    if value is None:
+                        value = build_profile_encoded(profile_id, timestamp=ts)
+                        _LOGGER.warning(
+                            "No learned frame for this %s yet, so the profile command is "
+                            "sent without the device signature and the machine may ignore "
+                            "it. Trigger any command once from the official Coffee Link "
+                            "app (e.g. power-on) so Home Assistant can learn the signature.",
+                            self.profile.label,
+                        )
+                except ValueError as err:
+                    raise self.unknown_profile_error(profile_id, slots) from err
+                self._record_sent(value)
+                prop = self.command_property or COMMAND_PROPERTY_CANDIDATES[0]
+                _LOGGER.info(
+                    "Sending PROFILE cmd via %s: profile=%d value=%s", prop, profile_id, value
+                )
+                await self.client.async_set_property_value(self.device.dsn, prop, value)
+                await self.async_request_refresh()
+
+            await self._with_cloud_session(_do)
+            return
+
+        async def _do() -> None:
+            try:
+                value = self._profile_command_value(profile_id, ts)
+            except ValueError as err:
+                raise self.unknown_profile_error(profile_id, slots) from err
+            await self._send_property_command(value, "PROFILE cmd")
 
         await self._with_cloud_session(_do)
 
