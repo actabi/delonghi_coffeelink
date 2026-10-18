@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Event entity** per machine: `status_changed`, `alarm_raised` /
+  `alarm_cleared` and `beverage_dispensed`.
+- **Maintenance binary sensors** on the PrimaDonna Soul (water tank, grounds
+  container, descale, filter, beans), unavailable while the status is stale.
+- Percentage sensors for d510/d512/d513 (meaning not verified yet).
+- **Diagnostics download** per device and per entry: chosen datapoints,
+  keep-alive writes / last success / last error, the publish time of every
+  status source and the status age.
+- **Request Status (test)** diagnostic button: the BLE status poll sent over
+  the cloud. Not verified; on an ECAM 610.75 it got no reply.
+- A disabled-by-default diagnostic button to forget learned commands.
+- Dutch translation.
+
+### Changed
+- **Refused credentials start re-authentication** (`ConfigEntryAuthFailed`)
+  instead of endless retries that sign in again each time and risk an account
+  lockout. A refused login is remembered until the user signs in again; only
+  network errors, Gigya 5xxxxx / 403048 and Ayla 408 / 429 / 5xx are retried.
+  Gigya 403120 (account locked) and 403002 (host clock off) get their own
+  messages.
+- The PrimaDonna Soul replays a beverage command learned from the official app
+  when one exists (start/stop actions 0x01/0x02 only); power commands stay
+  synthesized.
+- Machine Status uses the freshest decodable status source, including the
+  response channel.
+- `send_raw_command` is admin-only.
+- Minimum Home Assistant version 2024.11.0.
+
+### Fixed
+- Cloud write errors, including raw network errors and timeouts, surface as
+  `HomeAssistantError`, so scripts using `continue_on_error` keep going.
+- Devices disabled in Home Assistant are no longer polled, and a device the
+  entry no longer serves can be deleted.
+- A counter that drops (a bad read or a reset) no longer produces a drink
+  event.
+
 ## [0.3.25] - 2026-09-09
 
 ### Fixed

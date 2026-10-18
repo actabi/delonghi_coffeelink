@@ -30,6 +30,18 @@ Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla N
   current cloud connection
 - Generic Stop button
 - Services for raw binary command injection (advanced use)
+- An **event entity** per machine (**Machine Event**): `status_changed`,
+  `alarm_raised` / `alarm_cleared` and `beverage_dispensed` (from the per-drink
+  counters; a counter that drops is treated as a reset, never as a drink)
+- **Maintenance binary sensors** (water tank, grounds container, descale, filter,
+  beans) on the PrimaDonna Soul too. They turn unavailable while the machine's
+  status is stale instead of showing an old value
+- **Diagnostics download** per device - see [Diagnostics download](#diagnostics-download)
+- **Re-authentication** when De'Longhi refuses the password: Home Assistant asks
+  for it again instead of retrying the same password (which can lock the
+  account). A host clock that is more than about two minutes off is reported as
+  such
+- Dutch translation
 - Reads the machine's **own recipe catalogue** from the properties it already
   publishes - every parameter of every drink on every profile, the editable
   min/default/max ranges the machine itself declares, the saved-recipe slots and
@@ -90,6 +102,31 @@ The machine prioritizes LAN connections over cloud. As long as the Coffee Link m
 **Close the Coffee Link app completely** (swipe from recents) before using Home Assistant. If you want to regain control from the app, just reopen it.
 
 A future version of this integration will include a local LAN server to bypass this limitation.
+
+## Field notes: PrimaDonna Soul ECAM 610.75
+
+Tested on an ECAM 610.75 (Wi-Fi module `ADA 1.5.3`) in October 2026:
+
+- **Works from Home Assistant:** Wake and Standby (Machine Status follows within
+  about 30 s), Hot Water and Cappuccino. The Cappuccino came out in the
+  machine's normal quantity, although on the Soul the integration sends the
+  captured hot-water parameter block for every drink.
+- **Status refresh:** with the keep-alive running, the machine publishes its
+  status about every 30 s.
+- **Coffee Link app open:** a cloud Wake still worked with the app open in the
+  foreground on a phone next to the machine, and the app did not notice the
+  wake. Closing the app is still the safe default.
+- **Request Status (test)** got no reply on the response channel. It is a
+  diagnostic only.
+- **Status gaps of about 5 minutes on weak Wi-Fi.** Now and then the machine
+  stops publishing for about 5 minutes: Connection Status goes offline and
+  Machine Status turns unknown, then both recover by themselves. A ping log
+  showed the machine stayed on the network (with heavy packet loss); it lost
+  Ayla's notification channel and fell back to polling the cloud every 5
+  minutes. Commands sent in that window can arrive late. A stronger 2.4 GHz
+  signal at the machine is the fix, not a setting in this integration.
+- **Not verified on this model yet:** other drinks, the Stop button, the
+  maintenance binary sensors and alarm bits, and `beverage_dispensed` events.
 
 ## Installation
 
@@ -207,6 +244,27 @@ Each device has a diagnostic sensor **Last Captured Command**
 
 App-originated captures are also logged (enable debug logging for
 `custom_components.delonghi_coffeelink`) as `CAPTURED app->machine command ...`.
+
+### Diagnostics download
+
+Each machine's device page has **Download diagnostics** (in the device info
+menu). It shows, per machine:
+
+- which datapoints carry commands, responses, the keep-alive and the status
+  (`properties`);
+- the keep-alive: whether it runs, how many writes, the last success and the
+  last error (`keepalive`);
+- when the status was last published, its age and the decoded status
+  (`monitor`), plus the publish time of every status source the machine has
+  (`monitor.candidates`);
+- the command and response channels (`channels`).
+
+The e-mail address and password are redacted, and the machine's serial number,
+settings PIN, MAC and IP address are left out. It does include the Ayla DSN of
+the Wi-Fi module. If Machine Status stops updating, compare
+`monitor.published_at` with `keepalive.last_ok`: a keep-alive that succeeds
+while the status stays old points at the machine or its Wi-Fi, not at Home
+Assistant.
 
 ## Adding a new machine model
 
