@@ -276,6 +276,9 @@
       },
       "forget_learned": {
         "name": "Forget Learned Commands"
+      },
+      "request_status": {
+        "name": "Request Status (test)"
       }
     },
     "binary_sensor": {

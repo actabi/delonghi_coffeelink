@@ -704,6 +704,51 @@ def test_candidate_priority_is_respected_when_both_carry_values():
     assert coord.monitor_property == "d302_monitor_machine"
 
 
+def test_the_freshest_decodable_candidate_wins_over_priority():
+    """Fork: a stale blob in the priority datapoint must not hide a live one."""
+    coord = _coord("DL-millcore")
+    coord._update_monitor(
+        {
+            "d302_monitor_machine": {
+                "value": ELETTA_MONITOR_BLOB,
+                "data_updated_at": "2026-02-05T13:01:04Z",
+            },
+            "d302_monitor": {
+                "value": SOUL_MONITOR_BLOB,
+                "data_updated_at": "2026-10-17T10:00:00Z",
+            },
+        }
+    )
+    assert coord.monitor_property == "d302_monitor"
+    assert coord.monitor["status_name"] == "standby"
+
+
+def test_a_status_answer_on_the_response_channel_is_used_when_freshest():
+    coord = _coord("DL-millcore")
+    coord.response_property = "data_response"
+    coord._update_monitor(
+        {
+            "d302_monitor": {"value": SOUL_MONITOR_BLOB, "data_updated_at": "2026-10-16T12:39:43Z"},
+            "data_response": {"value": ELETTA_MONITOR_BLOB, "data_updated_at": "2026-10-17T10:00:00Z"},
+        }
+    )
+    assert coord.monitor_property == "data_response"
+    assert coord.monitor["status_name"] == "ready"
+
+
+def test_an_ordinary_response_is_never_taken_for_a_status():
+    coord = _coord("DL-millcore")
+    coord.response_property = "data_response"
+    coord._update_monitor(
+        {
+            "d302_monitor": {"value": SOUL_MONITOR_BLOB, "data_updated_at": "2026-10-16T12:39:43Z"},
+            # A real profile-selection response from the reference Soul dump.
+            "data_response": {"value": "0Aep8AEAOzxp6MXw", "data_updated_at": "2026-10-17T10:00:00Z"},
+        }
+    )
+    assert coord.monitor_property == "d302_monitor"
+
+
 def test_resolution_is_retried_until_a_value_shows_up():
     coord = _coord("DL-millcore")
 

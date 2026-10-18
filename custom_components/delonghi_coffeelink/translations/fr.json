@@ -276,6 +276,9 @@
       },
       "forget_learned": {
         "name": "Oublier les commandes apprises"
+      },
+      "request_status": {
+        "name": "Demander l'état (test)"
       }
     },
     "binary_sensor": {

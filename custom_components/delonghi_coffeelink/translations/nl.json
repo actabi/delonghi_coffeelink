@@ -276,6 +276,9 @@
       },
       "forget_learned": {
         "name": "Geleerde commando's vergeten"
+      },
+      "request_status": {
+        "name": "Status opvragen (test)"
       }
     },
     "binary_sensor": {

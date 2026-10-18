@@ -112,9 +112,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device.lan_ip,
         )
 
-    # One coordinator per device
+    # One coordinator per device - except devices the user disabled in Home
+    # Assistant: those are not polled at all (an old registration on the
+    # account otherwise costs a full poll and a keepalive every 30 s). Disabling
+    # a device disables its entities, which makes HA reload this entry.
+    device_registry = dr.async_get(hass)
     coordinators: list[DelonghiCoordinator] = []
     for device in devices:
+        registered = device_registry.async_get_device({(DOMAIN, device.dsn)})
+        if registered is not None and registered.disabled:
+            _LOGGER.info("Skipping dsn=%s: device disabled in Home Assistant", device.dsn)
+            continue
         coord = DelonghiCoordinator(hass, client, device, entry)
         # Restore any Eletta frames learned in previous runs before the first
         # refresh, so buttons can replay immediately after a restart.
@@ -160,6 +168,22 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if coord.profile.uses_cloud_session:
                 await coord.async_shutdown()
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Let the user delete a device this entry no longer serves.
+
+    Allowed only for a machine that is not loaded right now - removed from the
+    De'Longhi account, or disabled - so a live machine cannot be deleted from
+    under its own entities. Without this hook HA offers no delete at all, and a
+    machine taken off the account stays in the device list forever.
+    """
+    loaded = {coord.device.dsn for coord in hass.data.get(DOMAIN, {}).get(entry.entry_id, [])}
+    return not any(
+        domain == DOMAIN and ident in loaded for domain, ident in device_entry.identifiers
+    )
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

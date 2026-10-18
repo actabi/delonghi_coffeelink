@@ -132,7 +132,8 @@
       "standby": { "name": "Vypnout" },
       "stop": { "name": "Zastavit přípravu" },
       "dump_recipes": { "name": "Vypsat data receptů" },
-      "forget_learned": { "name": "Zapomenout naučené příkazy" }
+      "forget_learned": { "name": "Zapomenout naučené příkazy" },
+      "request_status": { "name": "Vyžádat stav (test)" }
     },
     "binary_sensor": {
       "water_tank_empty": { "name": "Prázdná nádržka na vodu" },

@@ -276,6 +276,9 @@
       },
       "forget_learned": {
         "name": "Glöm inlärda kommandon"
+      },
+      "request_status": {
+        "name": "Begär status (test)"
       }
     },
     "binary_sensor": {

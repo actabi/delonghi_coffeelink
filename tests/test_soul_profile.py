@@ -134,6 +134,13 @@ def test_offsets_agree_with_the_ble_integration(frame, label, switches, alarms):
     assert decoded["status"] == raw[9]
 
 
+def test_status_request_is_the_ble_status_poll_plus_a_timestamp():
+    """First six bytes = Arbuzov const.DEBUG, the BLE "status reply" command."""
+    raw = cb.build_status_request(timestamp=0x01020304)
+    assert raw[:6] == bytes([0x0D, 0x05, 0x75, 0x0F, 0xDA, 0x25])
+    assert raw[6:] == bytes([1, 2, 3, 4])
+
+
 def test_unmapped_alarm_bits_are_still_named():
     assert const.alarm_names((1 << 5) | (1 << 30)) == {"beans_empty", "alarm_bit_30"}
 

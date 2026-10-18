@@ -30,6 +30,7 @@ from .command_builder import (
     build_session_refresh_encoded,
     build_standby_encoded,
     build_standby_with_session_tail_encoded,
+    build_status_request_encoded,
     build_wake_encoded,
     build_wake_with_session_tail_encoded,
     decode_command,
@@ -76,6 +77,9 @@ from .model_profiles import profile_for
 from .monitor import parse_monitor_b64
 
 _LOGGER = logging.getLogger(__name__)
+
+# Sorts below any real data_updated_at when choosing the freshest monitor blob.
+_NEVER = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _surface_cloud_errors(func):
@@ -155,6 +159,12 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # occurrence instead of surfacing as a frozen status days later.
         self._keepalive_failures = 0
         self._keepalive_armed = False
+        # Surfaced by the diagnostics download: whether the keepalive runs at
+        # all, and whether the machine answers it (monitor_updated_at moving).
+        self.keepalive_writes = 0
+        self.keepalive_last_ok: datetime | None = None
+        self.keepalive_last_error: str | None = None
+        self._warned_no_keepalive = False
         # Consecutive failed polls currently being ridden out; reset on success.
         self._consecutive_failures = 0
         self._session_confirmed = False
@@ -281,6 +291,19 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.connected_property = self._detect_property(
                     props, CONNECTED_PROPERTY_CANDIDATES, "connected", required=False
                 )
+                if (
+                    self.connected_property is None
+                    and self.profile.keeps_monitor_session
+                    and not self._warned_no_keepalive
+                ):
+                    # Without it the status freezes silently - say so once.
+                    self._warned_no_keepalive = True
+                    _LOGGER.warning(
+                        "dsn=%s has none of %s, so the monitor keepalive cannot run "
+                        "and Machine Status will not refresh on its own",
+                        self.device.dsn,
+                        CONNECTED_PROPERTY_CANDIDATES,
+                    )
             # Before sniffing: the learn gate consults the catalogue, so a frame
             # captured on this very poll must be able to see the ids it declares.
             self._update_catalog(props)
@@ -362,6 +385,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # is retried on the next poll rather than deferred a full interval,
             # which would turn every hiccup into guaranteed silence.
             self._keepalive_failures += 1
+            self.keepalive_last_error = f"{type(err).__name__}: {err}"[:300]
             if self._keepalive_failures == 1:
                 _LOGGER.warning(
                     "Monitor session keepalive failed for dsn=%s: %s. Machine "
@@ -378,6 +402,8 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             return
         self._last_monitor_session_at = now
+        self.keepalive_writes += 1
+        self.keepalive_last_ok = datetime.now(timezone.utc)
         if self._keepalive_failures:
             _LOGGER.warning(
                 "Monitor session keepalive recovered for dsn=%s after %d failure(s)",
@@ -397,12 +423,25 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return value
         return None
 
+    def monitor_candidate_names(self) -> list[str]:
+        """Datapoints that may carry the MonitorV2 blob, in priority order.
+
+        The response channel is the last candidate: a machine asked for its
+        status (``async_request_status``) can answer there with the same
+        ``d0 .. 75 0f`` packet. Anything else on that channel fails the MonitorV2
+        check in parse_monitor_b64 and is never used as a status.
+        """
+        names = list(MONITOR_PROPERTY_CANDIDATES)
+        if self.response_property and self.response_property not in names:
+            names.append(self.response_property)
+        return names
+
     def _decoded_monitor_candidates(
         self, props: dict[str, Any]
     ) -> list[tuple[str, dict[str, Any]]]:
         """``(name, decoded)`` per monitor candidate carrying data, in priority order."""
         decoded: list[tuple[str, dict[str, Any]]] = []
-        for candidate in MONITOR_PROPERTY_CANDIDATES:
+        for candidate in self.monitor_candidate_names():
             value = self._monitor_value(props, candidate)
             if value is not None:
                 decoded.append((candidate, parse_monitor_b64(value)))
@@ -468,9 +507,19 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         try:
             available = self._decoded_monitor_candidates(props)
-            chosen = next(
-                ((name, mon) for name, mon in available if "error" not in mon), None
-            )
+            valid = [(name, mon) for name, mon in available if "error" not in mon]
+            chosen = None
+            if valid:
+                # Freshest wins, priority order breaks ties. A machine can keep
+                # an old blob in one datapoint while publishing in another, and
+                # "decodes" alone would lock onto the fossil.
+                chosen = max(
+                    enumerate(valid),
+                    key=lambda item: (
+                        self._published_at(props.get(item[1][0])) or _NEVER,
+                        -item[0],
+                    ),
+                )[1]
             if chosen is None:
                 if not available:
                     self.monitor = {}
@@ -1395,6 +1444,23 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._send_property_command(value, "STANDBY cmd")
 
         await self._with_cloud_session(_do)
+
+    @_surface_cloud_errors
+    async def async_request_status(self) -> None:
+        """Ask the machine for its status: the BLE app's status poll (0x75).
+
+        Same bytes the BLE integration sends to get a status reply
+        (``0d 05 75 0f da 25``), framed like every cloud command with a
+        timestamp. NOT VERIFIED over the cloud: the machine may answer on the
+        monitor datapoint, on the response channel (also a monitor candidate),
+        or not at all. Diagnostic; it changes nothing on the machine.
+        """
+        self._ensure_machine_reachable()
+        await self._with_cloud_session(
+            lambda: self._send_property_command(
+                build_status_request_encoded(), "STATUS REQUEST"
+            )
+        )
 
     @_surface_cloud_errors
     async def async_send_raw(self, value: str) -> None:

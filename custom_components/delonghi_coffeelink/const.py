@@ -146,6 +146,10 @@ ELETTA_OEM_PREFIX = "DL-striker"
 ACTION_START = 0x01
 ACTION_STOP = 0x02
 
+# Status request / MonitorV2 family (0x75 0x0f): the app asks with
+# 0d 05 75 0f <crc>, the machine answers d0 12 75 0f ... (see monitor.py).
+MONITOR_FAMILY = bytes([0x75, 0x0f])
+
 # Power / Wake command family (0x84 0x0f)
 CMD_FAMILY_POWER = bytes([0x84, 0x0f])
 POWER_WAKE_PARAMS = bytes([0x02, 0x01])  # observed wake command payload

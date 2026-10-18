@@ -276,6 +276,9 @@
       },
       "forget_learned": {
         "name": "Забыть изученные команды"
+      },
+      "request_status": {
+        "name": "Запросить статус (тест)"
       }
     },
     "binary_sensor": {

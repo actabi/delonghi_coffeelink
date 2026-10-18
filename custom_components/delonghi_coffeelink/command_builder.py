@@ -18,6 +18,7 @@ from .const import (
     DEFAULT_RECIPE_PARAMS,
     DUMPABLE_BLOB_FAMILIES,
     ELETTA_RECIPE_TRAILER,
+    MONITOR_FAMILY,
     POWER_SESSION_REFRESH_PARAMS,
     POWER_STANDBY_PARAMS,
     POWER_WAKE_PARAMS,
@@ -315,6 +316,23 @@ def build_standby_with_session_tail(app_id: int, timestamp: int | None = None) -
 
 def build_standby_with_session_tail_encoded(app_id: int) -> str:
     return encode_command(build_standby_with_session_tail(app_id))
+
+
+def build_status_request(timestamp: int | None = None) -> bytes:
+    """Status request (0x75), as the BLE app polls it: ``0d 05 75 0f da 25 <ts>``.
+
+    The first six bytes are the BLE integration's status poll (Arbuzov
+    const.DEBUG, "command which causes status reply"); the timestamp is added
+    like on every cloud command frame. Not verified over the cloud.
+    """
+    if timestamp is None:
+        timestamp = int(time.time())
+    header = bytes([CMD_PREFIX, 0x05, MONITOR_FAMILY[0], MONITOR_FAMILY[1]])
+    return header + crc16_aug_ccitt(header).to_bytes(2, "big") + timestamp.to_bytes(4, "big")
+
+
+def build_status_request_encoded() -> str:
+    return encode_command(build_status_request())
 
 
 def build_session_refresh_command(app_id: int, timestamp: int | None = None) -> bytes:

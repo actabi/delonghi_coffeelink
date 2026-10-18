@@ -39,6 +39,7 @@ async def async_setup_entry(
         entities.append(DelonghiStopButton(coord))
         entities.append(DelonghiDumpRecipesButton(coord))
         entities.append(DelonghiForgetLearnedButton(coord))
+        entities.append(DelonghiRequestStatusButton(coord))
     async_add_entities(entities)
 
 
@@ -188,3 +189,22 @@ class DelonghiForgetLearnedButton(_Base):
 
     async def async_press(self) -> None:
         self.coordinator.forget_learned()
+
+
+class DelonghiRequestStatusButton(_Base):
+    """Diagnostic: ask the machine for its status (BLE-style 0x75 poll).
+
+    Not verified over the cloud - see coordinator.async_request_status. Read
+    only: it asks, it changes nothing on the machine.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(coord)
+        self._attr_unique_id = f"{coord.device.dsn}_request_status"
+        self._attr_translation_key = "request_status"
+        self._attr_icon = "mdi:refresh"
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_request_status()
