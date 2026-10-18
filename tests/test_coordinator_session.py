@@ -416,9 +416,16 @@ def test_soul_learns_start_and_stop_frames_only():
     odd = cb.build_beverage_command(0x01, 0x05, bytes([1, 0, 0x28, 0x1B, 1, 6]), 1)
     coord._maybe_learn_frame(_decoded(base64.b64encode(odd).decode()))
     assert coord.learned_start_frames == {}
-    app_start = cb.build_beverage_command(0x01, 0x03, bytes([1, 0, 0x28, 0x1B, 1, 6]), 1)
-    coord._maybe_learn_frame(_decoded(base64.b64encode(app_start).decode()))
+    # 0x03 is the Eletta app's start; unverified on the Soul, so not learned.
+    eletta_style = cb.build_beverage_command(0x01, 0x03, bytes([1, 0, 0x28, 0x1B, 1, 6]), 1)
+    coord._maybe_learn_frame(_decoded(base64.b64encode(eletta_style).decode()))
+    assert coord.learned_start_frames == {}
+    start = cb.build_beverage_command(0x01, 0x01, bytes([1, 0, 0x28, 0x1B, 1, 6]), 1)
+    coord._maybe_learn_frame(_decoded(base64.b64encode(start).decode()))
+    stop = cb.build_beverage_command(0x01, 0x02, bytes([1, 0, 0x28, 0x1B, 1, 6]), 1)
+    coord._maybe_learn_frame(_decoded(base64.b64encode(stop).decode()))
     assert list(coord.learned_start_frames) == [0x01]
+    assert list(coord.learned_stop_frames) == [0x01]
 
 
 def test_a_network_failure_on_a_command_surfaces_as_a_home_assistant_error():

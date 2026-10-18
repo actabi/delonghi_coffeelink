@@ -22,7 +22,8 @@
       "cannot_connect": "Connexion au cloud De'Longhi impossible.",
       "no_devices": "Aucun appareil De'Longhi trouvé sur ce compte.",
       "unknown": "Erreur inattendue.",
-      "account_locked": "De'Longhi a temporairement bloqué ce compte après trop d'échecs de connexion. Attendez environ 30 minutes avant de réessayer : chaque tentative entre-temps maintient le blocage."
+      "account_locked": "De'Longhi a temporairement bloqué ce compte après trop d'échecs de connexion. Attendez environ 30 minutes avant de réessayer : chaque tentative entre-temps maintient le blocage.",
+      "clock_skew": "De'Longhi a refusé la connexion car l'horloge de l'hôte Home Assistant est décalée de plus de deux minutes environ. Corrigez l'heure (NTP), puis réessayez."
     },
     "abort": {
       "already_configured": "Ce compte est déjà configuré.",

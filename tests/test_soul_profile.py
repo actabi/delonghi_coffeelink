@@ -236,6 +236,7 @@ def test_percent_sensor_datapoints_exist_on_the_reference_soul():
     [
         (403042, False),  # invalid login ID or password
         (403120, False),  # account temporarily locked out
+        (403002, False),  # request expired: host clock off, retrying cannot help
         ("403042", False),
         (206002, False),  # account pending verification: needs the user
         (403048, True),  # rate limit exceeded: the password was not judged

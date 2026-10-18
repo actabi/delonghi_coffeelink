@@ -56,6 +56,11 @@ class AuthError(Exception):
 
 # Gigya account temporarily locked out after too many failed logins.
 GIGYA_ACCOUNT_LOCKED = 403120
+# Gigya "Request has expired": the signed getJWT timestamp is too far from
+# Gigya's clock (SAP KBA 2702335). The password was accepted; the HA host's clock
+# is wrong. Refused like a credential error - retrying cannot help until the
+# clock is fixed - but reported as a clock problem, not a bad password.
+GIGYA_REQUEST_EXPIRED = 403002
 # Gigya "rate limit exceeded" (SAP KBA 2702339): the request was throttled, the
 # credentials were not judged.
 GIGYA_RATE_LIMITED = 403048
@@ -338,9 +343,14 @@ class DelonghiAylaClient:
         async with self._session.post(url, data=params, timeout=_TIMEOUT) as resp:
             jwt_body = json.loads(await resp.text())
         if jwt_body.get("errorCode") != 0:
+            hint = (
+                " - check the clock (NTP) of the Home Assistant host"
+                if _gigya_code(jwt_body.get("errorCode")) == GIGYA_REQUEST_EXPIRED
+                else ""
+            )
             raise AuthError(
                 f"Gigya getJWT failed: {jwt_body.get('errorMessage')} "
-                f"(code {jwt_body.get('errorCode')})",
+                f"(code {jwt_body.get('errorCode')}){hint}",
                 transient=gigya_error_is_transient(jwt_body.get("errorCode")),
                 code=_gigya_code(jwt_body.get("errorCode")),
             )

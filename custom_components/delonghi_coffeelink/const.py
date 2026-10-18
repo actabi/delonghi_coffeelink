@@ -145,9 +145,6 @@ ELETTA_OEM_PREFIX = "DL-striker"
 # Actions
 ACTION_START = 0x01
 ACTION_STOP = 0x02
-# "start" as the official app writes it on learn-and-replay models (Eletta);
-# command_builder decodes it as start too.
-ACTION_START_APP = 0x03
 
 # Power / Wake command family (0x84 0x0f)
 CMD_FAMILY_POWER = bytes([0x84, 0x0f])

@@ -11,6 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .ayla_client import (
     GIGYA_ACCOUNT_LOCKED,
+    GIGYA_REQUEST_EXPIRED,
     AuthError,
     CloudError,
     DelonghiAylaClient,
@@ -33,10 +34,13 @@ def _auth_error_key(err: AuthError) -> str:
     """Map a sign-in failure to the form error the user can act on.
 
     A locked account gets its own message: "invalid password" there invites
-    exactly the further attempts that keep it locked.
+    exactly the further attempts that keep it locked. So does a wrong host
+    clock, where re-entering the (correct) password can never succeed.
     """
     if err.code == GIGYA_ACCOUNT_LOCKED:
         return "account_locked"
+    if err.code == GIGYA_REQUEST_EXPIRED:
+        return "clock_skew"
     return "cannot_connect" if err.transient else "invalid_auth"
 
 

@@ -51,7 +51,6 @@ from .catalog import (
 )
 from .const import (
     ACTION_START,
-    ACTION_START_APP,
     ACTION_STOP,
     APP_ID_PROPERTY,
     COMMAND_PROPERTY_CANDIDATES,
@@ -1201,12 +1200,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.profile.learns_from_app and decoded.get("action") not in (
             ACTION_START,
             ACTION_STOP,
-            ACTION_START_APP,
         ):
-            # Beverage-only learners (the Soul) take start/stop frames only: any
-            # other action byte would land in the start table and be replayed by
-            # a start button. 0x03 is the app's own "start" (seen on Eletta;
-            # which byte the Soul app sends is not verified).
+            # Beverage-only learners (the Soul) take 0x01 start / 0x02 stop only:
+            # any other action byte would land in the start table and be replayed
+            # by a start button. The Eletta app starts with 0x03; what the Soul
+            # app sends is not verified, so an unknown byte is not risked on a
+            # brew button. If the Last Captured Command sensor shows the Soul app
+            # using 0x03, add it here.
             return
 
         if ftype == "power":
