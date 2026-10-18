@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import time
 from collections import deque
@@ -9,12 +10,19 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_signed_app_id
+from .ayla_client import (
+    AuthError,
+    AylaDevice,
+    CloudError,
+    DelonghiAylaClient,
+    normalize_signed_app_id,
+)
 from .command_builder import (
     app_id_from_signature,
     builder_structural_b64,
@@ -68,6 +76,30 @@ from .monitor import parse_monitor_b64
 _LOGGER = logging.getLogger(__name__)
 
 
+def _surface_cloud_errors(func):
+    """Re-raise a failed cloud write as a HomeAssistantError.
+
+    CloudError and AuthError are plain exceptions, and Home Assistant treats
+    anything that is not a HomeAssistantError as a crash: a button press logs a
+    traceback, and a script step marked ``continue_on_error`` aborts the whole
+    script instead of continuing - which is exactly how a "cloud first, then
+    a fallback" script would silently never reach its fallback.
+    """
+
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        try:
+            return await func(self, *args, **kwargs)
+        except (CloudError, AuthError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cloud_command_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+
+    return wrapper
+
+
 class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Periodically fetch device properties from Ayla cloud."""
 
@@ -76,10 +108,15 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hass: HomeAssistant,
         client: DelonghiAylaClient,
         device: AylaDevice,
+        entry: ConfigEntry | None = None,
     ) -> None:
+        # The entry is passed explicitly: Home Assistant only falls back to the
+        # setup ContextVar with a deprecation report, and the entry is what an
+        # auth failure starts the reauth flow on.
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"{DOMAIN}_{device.dsn}",
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
@@ -258,6 +295,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # one this poll's successor will pick up.
             await self._refresh_monitor_session()
             return props
+        except AuthError as err:
+            # Refused credentials stop polling and start the reauth flow (HA does
+            # both on ConfigEntryAuthFailed). Retrying them every 30 s is one full
+            # password login per poll - the path to a locked account.
+            if not err.transient:
+                raise ConfigEntryAuthFailed(f"De'Longhi sign-in refused: {err}") from err
+            raise UpdateFailed(f"De'Longhi sign-in failed: {err}") from err
         except CloudError as err:
             raise UpdateFailed(f"Ayla cloud error: {err}") from err
         except Exception as err:
@@ -606,7 +650,13 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         the machine (issue #15). Every frame the official app sends carries that
         signature, so any learned frame - including one restored from disk at
         startup - yields it. Called after loading and after each new capture.
+
+        Only cloud-session models have a session id to derive: a Soul learns
+        beverage frames too (prefers_learned_beverages) but never opens a
+        session, so its id stays the default whatever frame it learned.
         """
+        if not self.profile.uses_cloud_session:
+            return
         new_id = app_id_from_signature(self._learned_device_signature())
         if new_id == self._device_app_id:
             return
@@ -1093,6 +1143,31 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "\n".join(lines),
         )
 
+    def forget_learned(self) -> int:
+        """Drop every frame learned from the official app; returns how many.
+
+        The escape hatch for learn-and-replay: a learned frame is replayed
+        verbatim from then on, so one that turns out wrong for this machine
+        would otherwise only go away by editing ``.storage`` by hand. Afterwards
+        every command is synthesized again until the app teaches a new frame.
+        """
+        count = (
+            len(self.learned_start_frames)
+            + len(self.learned_stop_frames)
+            + (1 if self.learned_wake_frame else 0)
+        )
+        self.learned_start_frames = {}
+        self.learned_stop_frames = {}
+        self.learned_wake_frame = None
+        self._store.async_delay_save(self._learned_storage_data, RECIPE_STORE_SAVE_DELAY)
+        self._refresh_device_app_id()
+        _LOGGER.warning(
+            "Forgot %d learned frame(s) for dsn=%s; commands are synthesized again",
+            count,
+            self.device.dsn,
+        )
+        return count
+
     def _learned_storage_data(self) -> dict:
         """Callback for the debounced Store save."""
         return serialize_learned_frames(
@@ -1111,7 +1186,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         appends a device signature a synthesized wake lacks. New/changed frames
         are persisted (debounced) so they survive restarts.
         """
-        if not self.profile.learns_from_app:
+        if not (self.profile.learns_from_app or self.profile.prefers_learned_beverages):
             return
         raw_b64 = decoded.get("raw_b64")
         if not raw_b64:
@@ -1119,6 +1194,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ftype = decoded.get("type")
 
         if ftype == "power":
+            # Beverage-only learners keep their synthesized power frames, which
+            # are the ones validated live on the reference Soul.
+            if not self.profile.learns_from_app:
+                return
             # The app also emits 0x84 0x0f frames that are NOT a power-on (e.g.
             # session-refresh packets with params 03 02, seen in issue #1
             # captures). Only the real wake params may be learned, otherwise a
@@ -1173,6 +1252,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._refresh_device_app_id()
 
+    @_surface_cloud_errors
     async def async_send_beverage(self, beverage_id: int, action: int) -> None:
         """Build + send a beverage command via the resolved command property."""
         from .command_builder import build_and_encode
@@ -1218,6 +1298,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         await self._with_cloud_session(_do)
 
+    @_surface_cloud_errors
     async def async_send_wake(self) -> None:
         """Send the WAKE / power-on command to bring the machine out of standby."""
         self._ensure_machine_reachable()
@@ -1262,6 +1343,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         )
 
+    @_surface_cloud_errors
     async def async_send_standby(self) -> None:
         """Send the STANDBY / power-off command (84 0f, params 01 01).
 
@@ -1298,6 +1380,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         await self._with_cloud_session(_do)
 
+    @_surface_cloud_errors
     async def async_send_raw(self, value: str) -> None:
         """Send a raw base64 command on the resolved command channel (advanced).
 

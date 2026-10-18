@@ -8,6 +8,13 @@
           "email": "Email",
           "password": "Mot de passe"
         }
+      },
+      "reauth_confirm": {
+        "title": "Se reconnecter",
+        "description": "Le cloud De'Longhi a refusé le mot de passe enregistré pour {email}. Home Assistant a cessé de se connecter pour éviter le blocage du compte. Saisissez le mot de passe Coffee Link actuel.",
+        "data": {
+          "password": "Mot de passe"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Erreur inattendue."
     },
     "abort": {
-      "already_configured": "Ce compte est déjà configuré."
+      "already_configured": "Ce compte est déjà configuré.",
+      "reauth_successful": "La réauthentification a réussi."
     }
   },
   "entity": {
@@ -177,6 +185,15 @@
       },
       "monitor_published": {
         "name": "Statut publié le"
+      },
+      "grounds_container_level": {
+        "name": "Niveau du bac à marc"
+      },
+      "descale_level": {
+        "name": "Niveau de détartrage"
+      },
+      "filter_usage": {
+        "name": "Usure du filtre"
       }
     },
     "button": {
@@ -254,6 +271,9 @@
       },
       "dump_recipes": {
         "name": "Exporter les datapoints recettes"
+      },
+      "forget_learned": {
+        "name": "Oublier les commandes apprises"
       }
     },
     "binary_sensor": {
@@ -268,6 +288,24 @@
       },
       "filter_change_needed": {
         "name": "Changement de filtre nécessaire"
+      },
+      "beans_empty": {
+        "name": "Plus de grains de café"
+      }
+    },
+    "event": {
+      "machine_event": {
+        "name": "Événement machine",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "status_changed": "État modifié",
+              "alarm_raised": "Alarme déclenchée",
+              "alarm_cleared": "Alarme terminée",
+              "beverage_dispensed": "Boisson servie"
+            }
+          }
+        }
       }
     }
   },
@@ -348,6 +386,9 @@
     },
     "target_matched_no_machine": {
       "message": "La cible de cette action ne contient aucune machine à café De'Longhi. Machines disponibles : {machines}."
+    },
+    "cloud_command_failed": {
+      "message": "Le cloud De'Longhi n'a pas accepté la commande : {error}"
     }
   }
 }

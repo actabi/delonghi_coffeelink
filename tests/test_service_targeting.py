@@ -50,6 +50,7 @@ def _install_stubs() -> None:
     exceptions = types.ModuleType("homeassistant.exceptions")
     exceptions.HomeAssistantError = _StubHomeAssistantError
     exceptions.ConfigEntryNotReady = type("ConfigEntryNotReady", (Exception,), {})
+    exceptions.ConfigEntryAuthFailed = type("ConfigEntryAuthFailed", (Exception,), {})
     storage = types.ModuleType("homeassistant.helpers.storage")
     storage.Store = object
     upd = types.ModuleType("homeassistant.helpers.update_coordinator")
@@ -69,7 +70,7 @@ def _install_stubs() -> None:
     ha_const.ATTR_LABEL_ID = "label_id"
     ha_const.EntityCategory = types.SimpleNamespace(DIAGNOSTIC="diagnostic")
     ha_const.Platform = types.SimpleNamespace(
-        SENSOR="sensor", BINARY_SENSOR="binary_sensor", BUTTON="button"
+        SENSOR="sensor", BINARY_SENSOR="binary_sensor", BUTTON="button", EVENT="event"
     )
     config_entries = types.ModuleType("homeassistant.config_entries")
     config_entries.ConfigEntry = object
@@ -85,6 +86,15 @@ def _install_stubs() -> None:
     entity_registry.async_get = lambda hass: hass.entity_registry
     aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
     aiohttp_client.async_get_clientsession = lambda hass: None
+    service = types.ModuleType("homeassistant.helpers.service")
+
+    def _register_admin(hass, domain, name, handler, schema=None) -> None:
+        # The real helper wraps the handler in an admin check, then registers
+        # it like any other service; the registration is what these tests see.
+        hass.services.admin_services.add(name)
+        hass.services.async_register(domain, name, handler, schema=schema)
+
+    service.async_register_admin_service = _register_admin
     helpers = types.ModuleType("homeassistant.helpers")
     helpers.config_validation = cv
     helpers.device_registry = device_registry
@@ -100,6 +110,7 @@ def _install_stubs() -> None:
         ("homeassistant.helpers.config_validation", cv),
         ("homeassistant.helpers.device_registry", device_registry),
         ("homeassistant.helpers.entity_registry", entity_registry),
+        ("homeassistant.helpers.service", service),
         ("homeassistant.helpers.storage", storage),
         ("homeassistant.helpers.update_coordinator", upd),
     ):
@@ -206,6 +217,7 @@ class _FakeServices:
     def __init__(self) -> None:
         self.handlers: dict[str, object] = {}
         self.registrations = 0
+        self.admin_services: set[str] = set()
 
     def async_register(self, domain, service, handler, schema=None) -> None:
         self.registrations += 1

@@ -8,6 +8,13 @@
           "email": "Email",
           "password": "Пароль"
         }
+      },
+      "reauth_confirm": {
+        "title": "Повторный вход",
+        "description": "Облако De'Longhi отклонило сохранённый пароль для {email}. Home Assistant прекратил попытки входа, чтобы учётная запись не была заблокирована. Введите текущий пароль Coffee Link.",
+        "data": {
+          "password": "Пароль"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Неожиданная ошибка."
     },
     "abort": {
-      "already_configured": "Эта учетная запись уже настроена."
+      "already_configured": "Эта учетная запись уже настроена.",
+      "reauth_successful": "Повторная аутентификация выполнена успешно."
     }
   },
   "entity": {
@@ -177,6 +185,15 @@
       },
       "monitor_published": {
         "name": "Статус опубликован"
+      },
+      "grounds_container_level": {
+        "name": "Заполнение контейнера для гущи"
+      },
+      "descale_level": {
+        "name": "Уровень до удаления накипи"
+      },
+      "filter_usage": {
+        "name": "Износ фильтра"
       }
     },
     "button": {
@@ -254,6 +271,9 @@
       },
       "dump_recipes": {
         "name": "Выгрузить datapoints рецептов"
+      },
+      "forget_learned": {
+        "name": "Забыть изученные команды"
       }
     },
     "binary_sensor": {
@@ -268,6 +288,24 @@
       },
       "filter_change_needed": {
         "name": "Требуется замена фильтра"
+      },
+      "beans_empty": {
+        "name": "Закончились кофейные зёрна"
+      }
+    },
+    "event": {
+      "machine_event": {
+        "name": "Событие кофемашины",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "status_changed": "Статус изменён",
+              "alarm_raised": "Сигнал тревоги",
+              "alarm_cleared": "Сигнал снят",
+              "beverage_dispensed": "Напиток приготовлен"
+            }
+          }
+        }
       }
     }
   },
@@ -348,6 +386,9 @@
     },
     "target_matched_no_machine": {
       "message": "Цель этого действия не содержит ни одной кофемашины De'Longhi. Доступные машины: {machines}."
+    },
+    "cloud_command_failed": {
+      "message": "Облако De'Longhi не приняло команду: {error}"
     }
   }
 }

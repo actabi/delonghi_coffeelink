@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfVolume
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -29,10 +29,12 @@ from .const import (
     DOMAIN,
     INFO_SENSORS,
     INTEGRATION_CLOUD_APP_ID,
+    PERCENT_SENSORS,
     MANUFACTURER,
     PROJECT_URL,
     MACHINE_STATUS_OPTIONS,
     MEASUREMENT_WATER_LITERS,
+    alarm_names,
     normalize_connection_status,
 )
 from .coordinator import DelonghiCoordinator
@@ -108,6 +110,11 @@ async def async_setup_entry(
                 )
                 continue
             entities.append(DelonghiInfoSensor(coord, prop_name, key, icon))
+        for candidates, key, _friendly, icon in PERCENT_SENSORS:
+            prop_name = _resolve_property(coord.data, candidates)
+            if prop_name is None:
+                continue
+            entities.append(DelonghiPercentSensor(coord, prop_name, key, icon))
         entities.append(DelonghiConnectionSensor(coord))
         entities.append(DelonghiLastConnectedSensor(coord))
         entities.append(DelonghiMachineStatusSensor(coord))
@@ -229,6 +236,25 @@ class DelonghiInfoSensor(_Base):
         return prop.get("value")
 
 
+class DelonghiPercentSensor(DelonghiInfoSensor):
+    """A 0-100 datapoint (see const.PERCENT_SENSORS for what is NOT verified).
+
+    Out-of-range or non-numeric values read as unknown rather than being
+    clamped: a value outside 0-100 means the datapoint is not what its name
+    says, and a plausible-looking 100 % would hide that.
+    """
+
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int | None:
+        value = parse_counter_value(super().native_value)
+        if value is None or not 0 <= value <= 100:
+            return None
+        return value
+
+
 class DelonghiConnectionSensor(_Base):
     """Exposes Ayla connection status (Online / Offline)."""
 
@@ -333,14 +359,14 @@ class DelonghiMachineStatusSensor(_Base):
         if published is not None:
             attrs["last_published"] = published.isoformat()
             attrs["stale"] = self.coordinator.monitor_is_stale
-        # Surface the raw switches/alarms bitfields as hex for troubleshooting,
-        # but only on ECAM models: the monitor parser may fill these keys for any
-        # model, so this uses_cloud_session gate is what keeps them off the Soul.
-        if self.coordinator.profile.uses_cloud_session:
-            if "switches" in monitor:
-                attrs["switches"] = f"0x{monitor['switches']:04X}"
-            if "alarms" in monitor:
-                attrs["alarms"] = f"0x{monitor['alarms']:08X}"
+        # Raw switches/alarms bitfields as hex for troubleshooting, on every
+        # model: the maintenance binary sensors read these bits on the Soul too,
+        # and the test plan checks them against the machine by hand.
+        if "switches" in monitor:
+            attrs["switches"] = f"0x{monitor['switches']:04X}"
+        if "alarms" in monitor:
+            attrs["alarms"] = f"0x{monitor['alarms']:08X}"
+            attrs["active_alarms"] = sorted(alarm_names(monitor["alarms"]))
         return attrs
 
 

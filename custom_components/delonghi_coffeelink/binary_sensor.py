@@ -1,10 +1,16 @@
-"""Binary sensor platform for DeLonghi Coffee Link (ECAM maintenance alarms).
+"""Binary sensor platform for DeLonghi Coffee Link (maintenance alarms).
 
 Maintenance state is decoded from the ``switches``/``alarms`` bitfields of the
-machine monitor MonitorV2 blob (see ``monitor.py``). The parser fills
-those bitfields for any model with a long-enough payload, but these maintenance
-entities are created ONLY for ECAM models (``uses_cloud_session`` is True, e.g.
-Eletta Explore) - so the PrimaDonna Soul gets no binary sensors and is untouched.
+machine monitor MonitorV2 blob (see ``monitor.py``).
+
+Upstream created these only for ECAM models (``uses_cloud_session``). This fork
+creates them for every machine, the PrimaDonna Soul included: the reference
+Soul dump carries a full-length MonitorV2 blob (13-byte contents, so switches
+and alarms are present), and the bit layout is the one the BLE integration uses
+for the same EcamPacket (see const.ALARM_NAMES). NOT VERIFIED on a Soul beyond
+the descale bit - the test plan removes the tank, the grounds container and
+the beans and checks each sensor. A sensor is unavailable while the monitor
+blob is missing, undecodable or stale, so it never reports a fossil.
 
 Bit layout derived from the DlghIoT client (TischenkoArseny, PR #9 / issue #7).
 """
@@ -52,15 +58,13 @@ async def async_setup_entry(
     coordinators: list[DelonghiCoordinator] = hass.data[DOMAIN][entry.entry_id]
     entities: list[BinarySensorEntity] = []
     for coord in coordinators:
-        # Maintenance bitfields are ECAM-only; never create these on Soul.
-        if not coord.profile.uses_cloud_session:
-            continue
         entities.extend(
             [
                 DelonghiWaterTankBinarySensor(coord),
                 DelonghiWasteContainerBinarySensor(coord),
                 DelonghiDecalcificationBinarySensor(coord),
                 DelonghiFilterBinarySensor(coord),
+                DelonghiBeansEmptyBinarySensor(coord),
             ]
         )
     async_add_entities(entities)
@@ -94,7 +98,13 @@ class _Base(CoordinatorEntity[DelonghiCoordinator], BinarySensorEntity):
     @property
     def available(self) -> bool:
         monitor = self._monitor()
-        return super().available and "alarms" in monitor and "error" not in monitor
+        return (
+            super().available
+            and "alarms" in monitor
+            and "error" not in monitor
+            # A blob the machine stopped publishing is not a tank level.
+            and not self.coordinator.monitor_is_stale
+        )
 
 
 class DelonghiWaterTankBinarySensor(_Base):
@@ -213,4 +223,31 @@ class DelonghiFilterBinarySensor(_Base):
             return {}
         return {
             "filter_alarm": bool((monitor["alarms"] >> 3) & 1),
+        }
+
+
+class DelonghiBeansEmptyBinarySensor(_Base):
+    """Coffee beans empty (alarm bit 5, or bit 15 - see const.ALARM_NAMES)."""
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(coord, "beans_empty", "mdi:seed-off-outline")
+
+    @property
+    def is_on(self) -> bool | None:
+        monitor = self._monitor()
+        if "alarms" not in monitor:
+            return None
+        alarms = monitor["alarms"]
+        return bool((alarms >> 5) & 1 or (alarms >> 15) & 1)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        monitor = self._monitor()
+        if "alarms" not in monitor:
+            return {}
+        alarms = monitor["alarms"]
+        return {
+            "beans_empty_alarm": bool((alarms >> 5) & 1),
+            "beans_empty_alarm_2": bool((alarms >> 15) & 1),
+            "bean_hopper_absent": bool((alarms >> 17) & 1),
         }

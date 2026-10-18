@@ -38,6 +38,7 @@ async def async_setup_entry(
             entities.append(DelonghiStartBeverageButton(coord, bev_id, key, friendly, icon))
         entities.append(DelonghiStopButton(coord))
         entities.append(DelonghiDumpRecipesButton(coord))
+        entities.append(DelonghiForgetLearnedButton(coord))
     async_add_entities(entities)
 
 
@@ -167,3 +168,23 @@ class DelonghiDumpRecipesButton(_Base):
 
     async def async_press(self) -> None:
         self.coordinator.log_recipe_datapoints()
+
+
+class DelonghiForgetLearnedButton(_Base):
+    """Diagnostic: forget every command learned from the official app.
+
+    Disabled by default - pressing it by accident costs a re-teach on models
+    that need one. Sends nothing to the machine.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coord: DelonghiCoordinator) -> None:
+        super().__init__(coord)
+        self._attr_unique_id = f"{coord.device.dsn}_forget_learned"
+        self._attr_translation_key = "forget_learned"
+        self._attr_icon = "mdi:eraser"
+
+    async def async_press(self) -> None:
+        self.coordinator.forget_learned()

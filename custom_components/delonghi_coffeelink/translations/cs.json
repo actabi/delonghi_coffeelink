@@ -8,6 +8,13 @@
           "email": "E-mail",
           "password": "Heslo"
         }
+      },
+      "reauth_confirm": {
+        "title": "Znovu se přihlásit",
+        "description": "Cloud De'Longhi odmítl uložené heslo pro {email}. Home Assistant se přestal přihlašovat, aby se účet nezablokoval. Zadejte aktuální heslo ke Coffee Link.",
+        "data": {
+          "password": "Heslo"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Došlo k neočekávané chybě."
     },
     "abort": {
-      "already_configured": "Tento účet je již nakonfigurován."
+      "already_configured": "Tento účet je již nakonfigurován.",
+      "reauth_successful": "Opětovné ověření bylo úspěšné."
     }
   },
   "entity": {
@@ -71,6 +79,9 @@
         }
       },
       "monitor_published": { "name": "Stav naposledy odeslán" },
+      "grounds_container_level": { "name": "Naplnění nádoby na sedliny" },
+      "descale_level": { "name": "Stav odvápnění" },
+      "filter_usage": { "name": "Opotřebení filtru" },
       "machine_status": {
         "name": "Stav kávovaru",
         "state": {
@@ -118,13 +129,30 @@
       "wake": { "name": "Zapnout" },
       "standby": { "name": "Vypnout" },
       "stop": { "name": "Zastavit přípravu" },
-      "dump_recipes": { "name": "Vypsat data receptů" }
+      "dump_recipes": { "name": "Vypsat data receptů" },
+      "forget_learned": { "name": "Zapomenout naučené příkazy" }
     },
     "binary_sensor": {
       "water_tank_empty": { "name": "Prázdná nádržka na vodu" },
       "waste_container_full": { "name": "Plný zásobník sedliny" },
       "decalcification_needed": { "name": "Nutné odvápnění" },
-      "filter_change_needed": { "name": "Nutná výměna filtru" }
+      "filter_change_needed": { "name": "Nutná výměna filtru" },
+      "beans_empty": { "name": "Došla kávová zrna" }
+    },
+    "event": {
+      "machine_event": {
+        "name": "Událost kávovaru",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "status_changed": "Změna stavu",
+              "alarm_raised": "Alarm aktivován",
+              "alarm_cleared": "Alarm zrušen",
+              "beverage_dispensed": "Nápoj připraven"
+            }
+          }
+        }
+      }
     }
   },
   "services": {
@@ -204,6 +232,9 @@
     },
     "target_matched_no_machine": {
       "message": "Cíl této akce neobsahuje žádný kávovar De'Longhi. Dostupné kávovary: {machines}."
+    },
+    "cloud_command_failed": {
+      "message": "Cloud De'Longhi příkaz nepřijal: {error}"
     }
   }
 }

@@ -8,6 +8,13 @@
           "email": "Email",
           "password": "Password"
         }
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "The De'Longhi cloud refused the stored password for {email}. Home Assistant has stopped signing in so the account does not get locked. Enter the current Coffee Link password.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This account is already configured."
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "entity": {
@@ -177,6 +185,15 @@
       },
       "monitor_published": {
         "name": "Status Last Published"
+      },
+      "grounds_container_level": {
+        "name": "Grounds Container Level"
+      },
+      "descale_level": {
+        "name": "Descale Level"
+      },
+      "filter_usage": {
+        "name": "Filter Usage"
       }
     },
     "button": {
@@ -254,6 +271,9 @@
       },
       "dump_recipes": {
         "name": "Dump Recipe Datapoints"
+      },
+      "forget_learned": {
+        "name": "Forget Learned Commands"
       }
     },
     "binary_sensor": {
@@ -268,6 +288,24 @@
       },
       "filter_change_needed": {
         "name": "Filter change needed"
+      },
+      "beans_empty": {
+        "name": "Coffee beans empty"
+      }
+    },
+    "event": {
+      "machine_event": {
+        "name": "Machine Event",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "status_changed": "Status changed",
+              "alarm_raised": "Alarm raised",
+              "alarm_cleared": "Alarm cleared",
+              "beverage_dispensed": "Beverage dispensed"
+            }
+          }
+        }
       }
     }
   },
@@ -294,7 +332,7 @@
     },
     "send_raw_command": {
       "name": "Send raw command",
-      "description": "Send an advanced base64-encoded binary command to the coffee machine.",
+      "description": "Send an advanced base64-encoded binary command to the coffee machine (administrators only).",
       "fields": {
         "value_base64": {
           "name": "Command (base64)",
@@ -348,6 +386,9 @@
     },
     "target_matched_no_machine": {
       "message": "The target of this action contains no De'Longhi coffee machine. Machines available: {machines}."
+    },
+    "cloud_command_failed": {
+      "message": "The De'Longhi cloud did not accept the command: {error}"
     }
   }
 }

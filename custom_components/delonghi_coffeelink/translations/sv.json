@@ -8,6 +8,13 @@
           "email": "E-post",
           "password": "Lösenord"
         }
+      },
+      "reauth_confirm": {
+        "title": "Logga in igen",
+        "description": "De'Longhi-molnet avvisade det sparade lösenordet för {email}. Home Assistant har slutat logga in så att kontot inte låses. Ange det aktuella Coffee Link-lösenordet.",
+        "data": {
+          "password": "Lösenord"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Oväntat fel."
     },
     "abort": {
-      "already_configured": "Det här kontot är redan konfigurerat."
+      "already_configured": "Det här kontot är redan konfigurerat.",
+      "reauth_successful": "Återautentiseringen lyckades."
     }
   },
   "entity": {
@@ -177,6 +185,15 @@
       },
       "monitor_published": {
         "name": "Status senast publicerad"
+      },
+      "grounds_container_level": {
+        "name": "Sumpbehållarens nivå"
+      },
+      "descale_level": {
+        "name": "Avkalkningsnivå"
+      },
+      "filter_usage": {
+        "name": "Filteranvändning"
       }
     },
     "button": {
@@ -254,6 +271,9 @@
       },
       "dump_recipes": {
         "name": "Logga receptdatapunkter"
+      },
+      "forget_learned": {
+        "name": "Glöm inlärda kommandon"
       }
     },
     "binary_sensor": {
@@ -268,6 +288,24 @@
       },
       "filter_change_needed": {
         "name": "Filterbyte behövs"
+      },
+      "beans_empty": {
+        "name": "Kaffebönor slut"
+      }
+    },
+    "event": {
+      "machine_event": {
+        "name": "Maskinhändelse",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "status_changed": "Status ändrad",
+              "alarm_raised": "Larm utlöst",
+              "alarm_cleared": "Larm åtgärdat",
+              "beverage_dispensed": "Dryck tillagad"
+            }
+          }
+        }
       }
     }
   },
@@ -348,6 +386,9 @@
     },
     "target_matched_no_machine": {
       "message": "Målet för den här åtgärden innehåller ingen De'Longhi-kaffemaskin. Tillgängliga maskiner: {machines}."
+    },
+    "cloud_command_failed": {
+      "message": "De'Longhi-molnet tog inte emot kommandot: {error}"
     }
   }
 }

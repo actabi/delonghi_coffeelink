@@ -14,11 +14,16 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.service import async_register_admin_service
 
 from .ayla_client import AuthError, CloudError, DelonghiAylaClient
 from .const import (
@@ -36,7 +41,12 @@ from .coordinator import DelonghiCoordinator, async_send_to_each
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.EVENT,
+]
 
 BEVERAGE_KEYS = [b[1] for b in BEVERAGES]
 
@@ -78,6 +88,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.async_authenticate()
         devices = await client.async_get_devices()
     except AuthError as err:
+        # Refused credentials must NOT be retried: ConfigEntryNotReady retries
+        # forever, one full password login each time, until Gigya locks the
+        # account. ConfigEntryAuthFailed stops and asks the user to sign in.
+        if not err.transient:
+            raise ConfigEntryAuthFailed(f"DeLonghi sign-in refused: {err}") from err
         raise ConfigEntryNotReady(f"DeLonghi auth failed: {err}") from err
     except CloudError as err:
         raise ConfigEntryNotReady(f"DeLonghi cloud error: {err}") from err
@@ -100,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # One coordinator per device
     coordinators: list[DelonghiCoordinator] = []
     for device in devices:
-        coord = DelonghiCoordinator(hass, client, device)
+        coord = DelonghiCoordinator(hass, client, device, entry)
         # Restore any Eletta frames learned in previous runs before the first
         # refresh, so buttons can replay immediately after a restart.
         await coord.async_load_learned()
@@ -383,7 +398,13 @@ def _register_services(hass: HomeAssistant) -> None:
     for service, handler, schema in (
         (SERVICE_START_BEVERAGE, _start_beverage, SERVICE_START_SCHEMA),
         (SERVICE_STOP_BEVERAGE, _stop_beverage, SERVICE_STOP_SCHEMA),
-        (SERVICE_SEND_RAW_COMMAND, _send_raw, SERVICE_RAW_SCHEMA),
     ):
         if not hass.services.has_service(DOMAIN, service):
             hass.services.async_register(DOMAIN, service, handler, schema=schema)
+    # Admin-only: a raw frame can do anything the protocol can - write machine
+    # settings, the PIN, recipes - so a non-admin Home Assistant user must not
+    # be able to send one. Brewing stays open to every user.
+    if not hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND):
+        async_register_admin_service(
+            hass, DOMAIN, SERVICE_SEND_RAW_COMMAND, _send_raw, schema=SERVICE_RAW_SCHEMA
+        )

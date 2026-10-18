@@ -136,12 +136,12 @@ def test_the_visit_link_matches_the_manifest_documentation():
 
 
 def test_no_platform_points_the_visit_link_at_the_machine():
-    """All three platforms build their own DeviceInfo, so all three can drift.
+    """Every platform builds its own DeviceInfo, so every one can drift.
 
     The machine's IP is still worth having - `lan_ip` feeds the diagnostics - but
     never as a link a user is invited to click.
     """
-    for filename in ("sensor.py", "binary_sensor.py", "button.py"):
+    for filename in ("sensor.py", "binary_sensor.py", "button.py", "event.py"):
         source = (COMPONENT_DIR / filename).read_text(encoding="utf-8")
         assert "configuration_url=PROJECT_URL," in source, filename
         assert "lan_ip" not in source, (

@@ -38,6 +38,11 @@ class ModelProfile:
     # them verbatim instead of synthesizing them (reliable on models whose
     # command bytes differ from the reference Soul).
     learns_from_app = False
+    # When True, a beverage frame captured from the official app is preferred
+    # over the synthesized one, but nothing else is learned (power commands stay
+    # synthesized) and a drink nobody taught still works synthesized. Weaker
+    # than learns_from_app, which needs a taught frame before anything works.
+    prefers_learned_beverages = False
     # ECAM models (Eletta / app_* channel) require a cloud session via
     # app_device_connected before commands are relayed; Soul does not.
     uses_cloud_session = False
@@ -101,6 +106,12 @@ class SoulProfile(ModelProfile):
     command_property = "data_request"
     learns_from_app = False
     keeps_monitor_session = True
+    # The synthesized Soul frame carries the captured Hot Water parameter block
+    # for EVERY drink (const.DEFAULT_RECIPE_PARAMS); upstream lists that as a
+    # known limitation. A drink brewed once from the official app is replayed
+    # with the app's own bytes instead. Frames identical to the synthesized one
+    # are never learned (see command_builder.learnable_beverage_id).
+    prefers_learned_beverages = True
 
     @classmethod
     def matches(cls, oem_model: str) -> bool:
@@ -108,6 +119,13 @@ class SoulProfile(ModelProfile):
 
     def monitor_session_value(self) -> object | None:
         return int(time.time())
+
+    def beverage_value(
+        self, beverage_id: int, action: int, learned_frame: str | None
+    ) -> str | None:
+        if learned_frame is not None:
+            return replay_with_timestamp(learned_frame)
+        return build_and_encode(beverage_id, action)
 
 
 class GenericSoulProfile(SoulProfile):

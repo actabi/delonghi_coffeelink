@@ -335,7 +335,120 @@ INFO_SENSORS = [
     (["software_version"], "software_version", "Software Version", "mdi:chip"),
 ]
 
-PLATFORMS = ["sensor", "binary_sensor", "button"]
+# Percentage datapoints the PrimaDonna Soul publishes (reference dump in
+# tests/fixtures/soul_properties.json: d510 = 82, d512 = 66, d513 = 0). Same
+# shape as INFO_SENSORS. NOT VERIFIED: what each percentage measures is read
+# from the datapoint name only - grounds container fill, progress towards the
+# next descale, water filter usage. The test plan checks each against the
+# machine's own display (empty the container, descale, change the filter).
+PERCENT_SENSORS = [
+    (["d510_ground_cnt_percentage"], "grounds_container_level", "Grounds Container Level", "mdi:delete-variant"),
+    (["d512_percentage_to_deca"],    "descale_level",           "Descale Level",           "mdi:water-pump"),
+    (["d513_percentage_usage_fltr"], "filter_usage",            "Filter Usage",            "mdi:filter-variant"),
+]
+
+# MonitorV2 alarm bit -> key, for events and attributes.
+#
+# Source: DEVICE_STATUS in Arbuzov/home_assistant_delonghi_primadonna const.py
+# (BLE integration, bit names from the official app's MonitorDataV2). The cloud
+# monitor blob is the same EcamPacket: the switches/alarms offsets in
+# monitor.py and that project's parse_monitor_data agree byte for byte, and the
+# BLE captures in its DEBUG_NOTES.md decode here to the expected bits (see
+# tests/test_soul_profile.py). NOT VERIFIED on a PrimaDonna Soul for any bit
+# but 2 (descale): the reference Soul dump carries bit 2 while its water count
+# since the last descale (d826) is past its threshold (d827).
+ALARM_NAMES: dict[int, str] = {
+    0: "water_tank_empty",
+    1: "grounds_container_full",
+    2: "descale_needed",
+    3: "filter_replace",
+    4: "coffee_ground_too_fine",
+    5: "beans_empty",
+    6: "machine_service",
+    7: "coffee_heater_probe_failure",
+    8: "too_much_coffee",
+    9: "infuser_motor_failure",
+    10: "steamer_probe_failure",
+    11: "drip_tray_empty",
+    12: "hydraulic_circuit_problem",
+    13: "tank_in_position",
+    14: "clean_knob",
+    15: "beans_empty_2",
+    16: "tank_too_full",
+    17: "bean_hopper_absent",
+    18: "grid_presence",
+    19: "infuser_sense",
+    20: "not_enough_coffee",
+    21: "expansion_comm_problem",
+    22: "expansion_submodules_problem",
+    23: "grinding_unit_1_problem",
+    24: "grinding_unit_2_problem",
+    25: "condense_fan_problem",
+    26: "clock_bt_comm_problem",
+    27: "spi_comm_problem",
+}
+
+
+def alarm_names(alarms: int) -> frozenset[str]:
+    """Keys of the alarm bits set in a monitor ``alarms`` field.
+
+    An unmapped bit is still reported, as ``alarm_bit_<n>``: an alarm nobody
+    has named yet is exactly the one worth seeing in an event.
+    """
+    return frozenset(
+        ALARM_NAMES.get(bit, f"alarm_bit_{bit}")
+        for bit in range(32)
+        if (alarms >> bit) & 1
+    )
+
+
+# Per-drink lifetime counters, by beverage key, for the "beverage dispensed"
+# event. Exact datapoint names from the reference Soul dump; the same names as
+# the COUNTER_SENSORS rows. Double Espresso (0x04) has no counter of its own on
+# the Soul, so it raises no event.
+BEVERAGE_COUNTERS: dict[str, str] = {
+    "espresso": "d705_tot_id1_espr",
+    "coffee": "d706_tot_id2_coffee",
+    "long_coffee": "d707_tot_id3_long",
+    "doppio": "d708_tot_id5_doppio_p",
+    "americano": "d709_id6_americano",
+    "cappuccino": "d710_tot_id7_capp",
+    "latte_macchiato": "d711_id8_lattmacc",
+    "caffelatte": "d712_id9_cafflatt",
+    "flat_white": "d713_id10_flatwhite",
+    "espresso_macchiato": "d714_id11_esprmacc",
+    "hot_milk": "d715_id12_hotmilk",
+    "cappuccino_doppio": "d716_id13_cappdoppio_p",
+    "cappuccino_reverse": "d717_id15_caprev",
+    "hot_water": "d718_id16_hotwater",
+    "tea": "d719_id22_tea",
+    "coffee_pot": "d720_tot_id23_coffee_pot",
+    "cortado": "d727_id24_cortado",
+    "long_black": "d728_id25_long_black",
+    "mug_to_go": "d729_id26_travel_mug",
+    "brew_over_ice": "d730_tot_id27_brew_over_ice",
+    "bean_system_1": "d721_id200_bs_1",
+    "bean_system_2": "d722_id201_bs_2",
+    "bean_system_3": "d723_id202_bs_3",
+    "bean_system_4": "d724_id203_bs_4",
+    "bean_system_5": "d725_id204_bs_5",
+    "bean_system_6": "d726_id205_bs_6",
+    "custom_recipe": "d741_tot_custom_b_bw",
+}
+
+# Event entity types (event.py / machine_events.py).
+EVENT_STATUS_CHANGED = "status_changed"
+EVENT_ALARM_RAISED = "alarm_raised"
+EVENT_ALARM_CLEARED = "alarm_cleared"
+EVENT_BEVERAGE_DISPENSED = "beverage_dispensed"
+EVENT_TYPES = (
+    EVENT_STATUS_CHANGED,
+    EVENT_ALARM_RAISED,
+    EVENT_ALARM_CLEARED,
+    EVENT_BEVERAGE_DISPENSED,
+)
+
+PLATFORMS = ["sensor", "binary_sensor", "button", "event"]
 
 # Service names
 SERVICE_SEND_RAW_COMMAND = "send_raw_command"

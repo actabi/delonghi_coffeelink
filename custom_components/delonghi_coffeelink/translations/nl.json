@@ -1,0 +1,394 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "De'Longhi Coffee Link",
+        "description": "Voer de gegevens van je Coffee Link-account in. Dit zijn dezelfde gegevens als in de Coffee Link-app.",
+        "data": {
+          "email": "E-mailadres",
+          "password": "Wachtwoord"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw aanmelden",
+        "description": "De De'Longhi-cloud heeft het opgeslagen wachtwoord voor {email} geweigerd. Home Assistant meldt zich niet meer aan, zodat het account niet wordt geblokkeerd. Voer het huidige Coffee Link-wachtwoord in.",
+        "data": {
+          "password": "Wachtwoord"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ongeldig e-mailadres of wachtwoord.",
+      "cannot_connect": "Kan geen verbinding maken met de De'Longhi-cloud.",
+      "no_devices": "Geen De'Longhi-apparaten gevonden in dit account.",
+      "unknown": "Onverwachte fout."
+    },
+    "abort": {
+      "already_configured": "Dit account is al ingesteld.",
+      "reauth_successful": "Opnieuw aanmelden is gelukt."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_beverages": {
+        "name": "Totaal zwarte dranken"
+      },
+      "total_espresso": {
+        "name": "Totaal espresso's"
+      },
+      "total_milk_drinks": {
+        "name": "Totaal koffie met melk"
+      },
+      "total_water": {
+        "name": "Totaal alleen melk"
+      },
+      "total_espresso_alt": {
+        "name": "Totaal espresso (alternatief)"
+      },
+      "total_coffee": {
+        "name": "Totaal koffie"
+      },
+      "total_long_coffee": {
+        "name": "Totaal Long Coffee"
+      },
+      "total_doppio": {
+        "name": "Totaal Doppio+"
+      },
+      "total_americano": {
+        "name": "Totaal Americano"
+      },
+      "total_cappuccino": {
+        "name": "Totaal cappuccino"
+      },
+      "total_latte_macchiato": {
+        "name": "Totaal latte macchiato"
+      },
+      "total_caffelatte": {
+        "name": "Totaal caffè latte"
+      },
+      "total_flat_white": {
+        "name": "Totaal flat white"
+      },
+      "total_espresso_macchiato": {
+        "name": "Totaal espresso macchiato"
+      },
+      "total_hot_milk": {
+        "name": "Totaal warme melk"
+      },
+      "total_cappuccino_doppio": {
+        "name": "Totaal cappuccino Doppio+"
+      },
+      "total_cappuccino_reverse": {
+        "name": "Totaal cappuccino reverse"
+      },
+      "total_hot_water": {
+        "name": "Totaal heet water"
+      },
+      "total_tea": {
+        "name": "Totaal thee"
+      },
+      "total_coffee_pot": {
+        "name": "Totaal koffiepot"
+      },
+      "total_brew_over_ice": {
+        "name": "Totaal Brew Over Ice"
+      },
+      "total_mug_hot": {
+        "name": "Totaal warme mok"
+      },
+      "total_mug_cold": {
+        "name": "Totaal koude mok"
+      },
+      "total_iced_bev": {
+        "name": "Totaal ijsdranken"
+      },
+      "total_mug_bev": {
+        "name": "Totaal mokdranken"
+      },
+      "total_mug_iced_bev": {
+        "name": "Totaal ijsdranken in mok"
+      },
+      "total_cold_brew_bev": {
+        "name": "Totaal cold brew"
+      },
+      "grounds_counter": {
+        "name": "Teller koffiedik"
+      },
+      "total_descales": {
+        "name": "Totaal ontkalkingen"
+      },
+      "water_total_quantity": {
+        "name": "Totale waterhoeveelheid"
+      },
+      "total_filters_used": {
+        "name": "Totaal gebruikte filters"
+      },
+      "water_filter_quantity": {
+        "name": "Water door filter"
+      },
+      "descale_status": {
+        "name": "Ontkalkingsstatus"
+      },
+      "water_hardness": {
+        "name": "Waterhardheid"
+      },
+      "software_version": {
+        "name": "Softwareversie"
+      },
+      "last_connected": {
+        "name": "Laatst verbonden"
+      },
+      "connection_status": {
+        "name": "Cloudverbinding",
+        "state": {
+          "online": "Verbonden",
+          "offline": "Niet verbonden",
+          "unknown": "Onbekend"
+        }
+      },
+      "machine_status": {
+        "name": "Machinestatus",
+        "state": {
+          "standby": "Stand-by",
+          "waking_up": "Opstarten",
+          "going_to_sleep": "Naar stand-by",
+          "descaling": "Ontkalken",
+          "preparing_steam": "Stoom maken",
+          "recovering": "Herstellen",
+          "ready": "Gereed",
+          "rinsing": "Spoelen",
+          "preparing_milk": "Melk bereiden",
+          "dispensing_hot_water": "Heet water tappen",
+          "cleaning_milk": "Melksysteem reinigen",
+          "preparing_chocolate": "Chocolade bereiden",
+          "preparing_milk_alt": "Melk bereiden",
+          "unknown": "Onbekend"
+        }
+      },
+      "cloud_session_app_id": {
+        "name": "Cloudsessie app_id"
+      },
+      "last_captured_command": {
+        "name": "Laatst vastgelegd commando"
+      },
+      "total_other_beverages": {
+        "name": "Totaal overige dranken"
+      },
+      "total_cortado": {
+        "name": "Totaal cortado"
+      },
+      "total_long_black": {
+        "name": "Totaal long black"
+      },
+      "total_mug_to_go": {
+        "name": "Totaal Mug to Go"
+      },
+      "monitor_published": {
+        "name": "Status laatst gepubliceerd"
+      },
+      "grounds_container_level": {
+        "name": "Vulling bezinkselbak"
+      },
+      "descale_level": {
+        "name": "Ontkalkingsniveau"
+      },
+      "filter_usage": {
+        "name": "Filtergebruik"
+      }
+    },
+    "button": {
+      "start_espresso": {
+        "name": "Espresso"
+      },
+      "start_coffee": {
+        "name": "Koffie"
+      },
+      "start_long_coffee": {
+        "name": "Long Coffee"
+      },
+      "start_double_espresso": {
+        "name": "Dubbele espresso"
+      },
+      "start_doppio": {
+        "name": "Doppio+"
+      },
+      "start_americano": {
+        "name": "Americano"
+      },
+      "start_cappuccino": {
+        "name": "Cappuccino"
+      },
+      "start_latte_macchiato": {
+        "name": "Latte macchiato"
+      },
+      "start_caffelatte": {
+        "name": "Caffè latte"
+      },
+      "start_flat_white": {
+        "name": "Flat white"
+      },
+      "start_espresso_macchiato": {
+        "name": "Espresso macchiato"
+      },
+      "start_hot_milk": {
+        "name": "Warme melk"
+      },
+      "start_cappuccino_doppio": {
+        "name": "Cappuccino Doppio+"
+      },
+      "start_cappuccino_reverse": {
+        "name": "Cappuccino reverse"
+      },
+      "start_hot_water": {
+        "name": "Heet water"
+      },
+      "start_tea": {
+        "name": "Thee"
+      },
+      "start_coffee_pot": {
+        "name": "Koffiepot"
+      },
+      "start_cortado": {
+        "name": "Cortado"
+      },
+      "start_long_black": {
+        "name": "Long black"
+      },
+      "start_mug_to_go": {
+        "name": "Mug to Go"
+      },
+      "start_brew_over_ice": {
+        "name": "Brew Over Ice"
+      },
+      "wake": {
+        "name": "Aanzetten"
+      },
+      "standby": {
+        "name": "Stand-by"
+      },
+      "stop": {
+        "name": "Stop"
+      },
+      "dump_recipes": {
+        "name": "Receptdatapunten loggen"
+      },
+      "forget_learned": {
+        "name": "Geleerde commando's vergeten"
+      }
+    },
+    "binary_sensor": {
+      "water_tank_empty": {
+        "name": "Waterreservoir leeg"
+      },
+      "waste_container_full": {
+        "name": "Bezinkselbak vol"
+      },
+      "decalcification_needed": {
+        "name": "Ontkalken nodig"
+      },
+      "filter_change_needed": {
+        "name": "Filter vervangen"
+      },
+      "beans_empty": {
+        "name": "Koffiebonen op"
+      }
+    },
+    "event": {
+      "machine_event": {
+        "name": "Machinegebeurtenis",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "status_changed": "Status gewijzigd",
+              "alarm_raised": "Melding actief",
+              "alarm_cleared": "Melding opgeheven",
+              "beverage_dispensed": "Drank gezet"
+            }
+          }
+        }
+      }
+    }
+  },
+  "services": {
+    "start_beverage": {
+      "name": "Drank starten",
+      "description": "Start het bereiden van een drank op het gekozen De'Longhi-koffiezetapparaat.",
+      "fields": {
+        "beverage": {
+          "name": "Drank",
+          "description": "Het recept dat bereid moet worden."
+        }
+      }
+    },
+    "stop_beverage": {
+      "name": "Drank stoppen",
+      "description": "Stop het bereiden van de gekozen drank.",
+      "fields": {
+        "beverage": {
+          "name": "Drank",
+          "description": "Het recept waarvan de bereiding moet stoppen."
+        }
+      }
+    },
+    "send_raw_command": {
+      "name": "Ruw commando versturen",
+      "description": "Verstuur een geavanceerd, base64-gecodeerd binair commando naar het koffiezetapparaat (alleen beheerders).",
+      "fields": {
+        "value_base64": {
+          "name": "Commando (base64)",
+          "description": "Base64-weergave van de bytes van het binaire commando."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "espresso": "Espresso",
+        "coffee": "Koffie",
+        "long_coffee": "Long Coffee",
+        "double_espresso": "Dubbele espresso",
+        "doppio": "Doppio+",
+        "americano": "Americano",
+        "cappuccino": "Cappuccino",
+        "latte_macchiato": "Latte macchiato",
+        "caffelatte": "Caffè latte",
+        "flat_white": "Flat white",
+        "espresso_macchiato": "Espresso macchiato",
+        "hot_milk": "Warme melk",
+        "cappuccino_doppio": "Cappuccino Doppio+",
+        "cappuccino_reverse": "Cappuccino reverse",
+        "hot_water": "Heet water",
+        "tea": "Thee",
+        "coffee_pot": "Koffiepot",
+        "cortado": "Cortado",
+        "long_black": "Long black",
+        "mug_to_go": "Mug to Go",
+        "brew_over_ice": "Brew Over Ice"
+      }
+    }
+  },
+  "exceptions": {
+    "machine_offline": {
+      "message": "{name} is offline in de De'Longhi-cloud en kan geen commando's ontvangen. Controleer of het apparaat stroom heeft en met wifi is verbonden (Coffee Link-app) en probeer het opnieuw."
+    },
+    "no_machine_configured": {
+      "message": "Er is geen De'Longhi-apparaat ingesteld, dus er is niets om dit commando naar te sturen."
+    },
+    "target_required": {
+      "message": "Dit account heeft meerdere apparaten ({machines}), dus het commando moet zeggen welk apparaat. Kies een apparaat als doel van de actie - anders zou het naar allemaal gaan."
+    },
+    "target_not_a_machine": {
+      "message": "{device} is geen De'Longhi-koffiezetapparaat van deze integratie. Beschikbare apparaten: {machines}."
+    },
+    "machine_unavailable": {
+      "message": "{device} is een De'Longhi-apparaat, maar het account is nu niet geladen, dus het commando kan niet worden verstuurd. Beschikbare apparaten: {machines}."
+    },
+    "target_matched_no_machine": {
+      "message": "Het doel van deze actie bevat geen De'Longhi-koffiezetapparaat. Beschikbare apparaten: {machines}."
+    },
+    "cloud_command_failed": {
+      "message": "De De'Longhi-cloud heeft het commando niet aangenomen: {error}"
+    }
+  }
+}

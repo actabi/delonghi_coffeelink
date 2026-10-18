@@ -56,8 +56,10 @@ class _StubStore:
 class _StubCoordinator:
     """helpers.update_coordinator.DataUpdateCoordinator."""
 
-    def __init__(self, hass, logger, name=None, update_interval=None) -> None:
+    def __init__(self, hass, logger, config_entry=None, name=None,
+                 update_interval=None) -> None:
         self.hass = hass
+        self.config_entry = config_entry
         self.logger = logger
         self.name = name
         self.update_interval = update_interval
@@ -116,6 +118,7 @@ def _install_stubs() -> None:
     core.HomeAssistant = object
     exceptions = types.ModuleType("homeassistant.exceptions")
     exceptions.HomeAssistantError = _StubHomeAssistantError
+    exceptions.ConfigEntryAuthFailed = type("ConfigEntryAuthFailed", (Exception,), {})
     storage = types.ModuleType("homeassistant.helpers.storage")
     storage.Store = _StubStore
     upd = types.ModuleType("homeassistant.helpers.update_coordinator")
@@ -358,14 +361,64 @@ def test_sniffer_does_not_learn_our_own_fallback_frame():
 
 # --- Soul (reference machine) ----------------------------------------------
 
-def test_soul_never_learns_and_keeps_the_default_id():
+# Fork change: the Soul prefers a beverage frame learned from the official app
+# over its synthesized one (which carries the Hot Water parameters for every
+# drink). Upstream pinned "the Soul never learns"; these pin the replacement.
+
+def _soul_app_frame(bev_id: int, params: bytes) -> str:
+    """A Soul-shaped app frame whose bytes differ from the synthesized one.
+
+    Test construct for the learning mechanism only - NOT a captured frame.
+    """
+    raw = cb.build_beverage_command(bev_id, const.ACTION_START, params, timestamp=1)
+    return base64.b64encode(raw).decode()
+
+
+def test_soul_learns_an_app_beverage_frame_and_keeps_the_default_id():
     coord = _coord("DL-millcore")
-    coord._maybe_learn_frame(_decoded(COFFEE_FRAME))
-    coord._maybe_learn_frame(_decoded(SOUL_HOT_WATER))
-    assert coord.learned_start_frames == {}
-    assert coord.learned_stop_frames == {}
+    frame = _soul_app_frame(0x01, bytes([0x01, 0x00, 0x28, 0x1B, 0x01, 0x06]))
+    _capture(coord, frame)
+    assert coord.last_captured_command["matches_integration"] is False
+    assert coord.learned_start_frames == {0x01: frame}
+    # No session on a Soul, so no session id is derived from what it learned.
     assert coord.own_cloud_app_id == DEFAULT_APP_ID
     assert coord.uses_device_cloud_app_id is False
+
+
+def test_soul_does_not_learn_a_frame_it_would_synthesize_itself():
+    coord = _coord("DL-millcore")
+    _capture(coord, SOUL_HOT_WATER)
+    assert coord.last_captured_command["matches_integration"] is True
+    assert coord.learned_start_frames == {}
+
+
+def test_soul_never_learns_power_frames():
+    """Wake/standby stay synthesized: those are the frames validated live."""
+    coord = _coord("DL-millcore")
+    wake = base64.b64encode(cb.build_wake_command(timestamp=1) + b"\x00\xc5\x86\x21")
+    coord._maybe_learn_frame(_decoded(wake.decode()))
+    assert coord.learned_wake_frame is None
+
+
+def test_soul_replays_the_learned_frame_and_synthesizes_the_rest():
+    coord = _coord("DL-millcore")
+    frame = _soul_app_frame(0x01, bytes([0x01, 0x00, 0x28, 0x1B, 0x01, 0x06]))
+    replayed = coord.profile.beverage_value(0x01, const.ACTION_START, frame)
+    # Same structural bytes as the app's frame, fresh timestamp only.
+    assert base64.b64decode(replayed)[:14] == base64.b64decode(frame)[:14]
+    built = coord.profile.beverage_value(0x10, const.ACTION_START, None)
+    assert base64.b64decode(built)[:12].hex(" ") == "0d 0d 83 f0 10 01 0f 00 fa 1b 01 06"
+
+
+def test_forget_learned_drops_every_frame_and_persists_it():
+    coord = _coord("DL-millcore")
+    frame = _soul_app_frame(0x01, bytes([0x01, 0x00, 0x28, 0x1B, 0x01, 0x06]))
+    _capture(coord, frame)
+    saves = coord._store.saves
+    assert coord.forget_learned() == 1
+    assert coord.learned_start_frames == {}
+    assert coord._store.saves == saves + 1
+    assert coord._store.data == {"start": {}, "stop": {}}
 
 
 def test_soul_command_bytes_are_unchanged():
