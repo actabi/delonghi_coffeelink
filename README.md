@@ -124,9 +124,25 @@ Tested on an ECAM 610.75 (Wi-Fi module `ADA 1.5.3`) in October 2026:
   showed the machine stayed on the network (with heavy packet loss); it lost
   Ayla's notification channel and fell back to polling the cloud every 5
   minutes. Commands sent in that window can arrive late. A stronger 2.4 GHz
-  signal at the machine is the fix, not a setting in this integration.
-- **Not verified on this model yet:** other drinks, the Stop button, the
-  maintenance binary sensors and alarm bits, and `beverage_dispensed` events.
+  signal at the machine is the fix, not a setting in this integration. The
+  gaps showed up most often within a few minutes after a wake (three times out
+  of about six wakes).
+- **A stuck Wi-Fi module.** Once, overnight, the module stopped publishing for
+  about 12 hours and stopped answering ping, while the cloud still listed the
+  machine as online and the keep-alive writes kept succeeding. The diagnostics
+  download shows this as an old `monitor.published_at` next to a recent
+  `keepalive.last_ok`. Unplugging the machine for 30 seconds fixed it.
+- **Maintenance sensors:** taking out the water tank turned Water Tank Empty on
+  within 30 to 60 s (with `alarm_raised`, then `alarm_cleared` when it went
+  back), and taking out the grounds container turned Grounds Container Full on.
+  Descale Needed matched the display.
+- **Counters are not refreshed through the cloud.** Over two days of use the
+  per-drink counters and the grounds counter did not change, so
+  `beverage_dispensed` events do not fire on this machine and the counter
+  sensors stay at their old values. The grounds container fill level also
+  stayed at the same percentage after emptying.
+- **Not verified on this model yet:** other drinks, the Stop button, and the
+  "empty grounds" and "beans empty" alarms.
 
 ## Installation
 
