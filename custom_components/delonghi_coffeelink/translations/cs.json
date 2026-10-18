@@ -21,7 +21,8 @@
       "invalid_auth": "Neplatný e-mail nebo heslo.",
       "cannot_connect": "Nepodařilo se připojit ke cloudu De'Longhi.",
       "no_devices": "U tohoto účtu nebyl nalezen žádný kávovar De'Longhi.",
-      "unknown": "Došlo k neočekávané chybě."
+      "unknown": "Došlo k neočekávané chybě.",
+      "account_locked": "De'Longhi tento účet dočasně zablokoval po příliš mnoha neúspěšných přihlášeních. Počkejte asi 30 minut, než to zkusíte znovu – každý pokus mezitím blokaci prodlužuje."
     },
     "abort": {
       "already_configured": "Tento účet je již nakonfigurován.",

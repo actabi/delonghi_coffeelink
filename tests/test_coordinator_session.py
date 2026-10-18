@@ -410,6 +410,30 @@ def test_soul_replays_the_learned_frame_and_synthesizes_the_rest():
     assert base64.b64decode(built)[:12].hex(" ") == "0d 0d 83 f0 10 01 0f 00 fa 1b 01 06"
 
 
+def test_soul_learns_start_and_stop_frames_only():
+    """An odd action byte would land in the start table and brew on 'start'."""
+    coord = _coord("DL-millcore")
+    odd = cb.build_beverage_command(0x01, 0x05, bytes([1, 0, 0x28, 0x1B, 1, 6]), 1)
+    coord._maybe_learn_frame(_decoded(base64.b64encode(odd).decode()))
+    assert coord.learned_start_frames == {}
+    app_start = cb.build_beverage_command(0x01, 0x03, bytes([1, 0, 0x28, 0x1B, 1, 6]), 1)
+    coord._maybe_learn_frame(_decoded(base64.b64encode(app_start).decode()))
+    assert list(coord.learned_start_frames) == [0x01]
+
+
+def test_a_network_failure_on_a_command_surfaces_as_a_home_assistant_error():
+    """The write posts directly, so timeouts arrive unwrapped (review finding)."""
+
+    class _TimingOut(_RecordingClient):
+        async def async_set_property_value(self, dsn, prop, value):
+            raise TimeoutError
+
+    coord = _coord("DL-millcore", client=_TimingOut())
+    with pytest.raises(_StubHomeAssistantError) as err:
+        asyncio.run(coord.async_send_wake())
+    assert err.value.translation_key == "cloud_command_failed"
+
+
 def test_forget_learned_drops_every_frame_and_persists_it():
     coord = _coord("DL-millcore")
     frame = _soul_app_frame(0x01, bytes([0x01, 0x00, 0x28, 0x1B, 0x01, 0x06]))

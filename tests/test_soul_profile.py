@@ -179,6 +179,24 @@ def test_counter_drop_is_a_reset_not_a_drink():
     assert events.diff(_snap(espresso=10), _snap(espresso=0)) == []
 
 
+def test_a_bad_counter_read_and_its_recovery_raise_no_drink():
+    """Review finding: 1234 -> 0 -> 1234 used to report 1234 drinks."""
+    last = _snap(espresso=1234)
+    fired = []
+    for value in (0, 1234, 1235):
+        current = _snap(espresso=value)
+        fired += events.diff(last, current)
+        last = events.merge(last, current)
+    assert fired == [("beverage_dispensed", {"beverage": "espresso", "count": 1, "total": 1235})]
+
+
+def test_unmapped_status_is_not_a_status():
+    """Status code 29 (or any unmapped code) decodes as 'unknown': not an event."""
+    snap = events.take_snapshot({}, {"status_name": "unknown", "alarms": 0}, stale=False)
+    assert snap.status is None
+    assert snap.alarms == frozenset()
+
+
 def test_snapshot_from_the_reference_soul():
     props = _props()
     decoded = monitor.parse_monitor_b64(props["d302_monitor"]["value"])
@@ -219,6 +237,8 @@ def test_percent_sensor_datapoints_exist_on_the_reference_soul():
         (403042, False),  # invalid login ID or password
         (403120, False),  # account temporarily locked out
         ("403042", False),
+        (206002, False),  # account pending verification: needs the user
+        (403048, True),  # rate limit exceeded: the password was not judged
         (500001, True),  # general server error
         (None, True),
         ("not-a-number", True),
@@ -228,7 +248,58 @@ def test_gigya_error_classification(code, transient):
     assert ayla.gigya_error_is_transient(code) is transient
 
 
+@pytest.mark.parametrize(
+    ("status", "transient"),
+    [(400, False), (401, False), (403, False), (408, True), (429, True), (500, True), (503, True)],
+)
+def test_ayla_sso_status_classification(status, transient):
+    assert ayla.ayla_sso_status_is_transient(status) is transient
+
+
 def test_auth_error_defaults_to_refused():
     """An AuthError nobody classified must stop polling, never retry forever."""
     assert ayla.AuthError("x").transient is False
     assert ayla.AuthError("x", transient=True).transient is True
+    assert ayla.AuthError("x", code=403120).code == ayla.GIGYA_ACCOUNT_LOCKED
+
+
+def _client_with_login(outcomes: list):
+    """A client whose Gigya leg answers from ``outcomes``; counts attempts."""
+    import asyncio
+
+    client = ayla.DelonghiAylaClient(None, "owner@example.invalid", "secret")
+    calls = []
+
+    async def _gigya() -> str:
+        calls.append(1)
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    async def _sso(jwt: str) -> None:
+        client._access_token = "token"
+
+    client._gigya_login_and_jwt = _gigya
+    client._ayla_sso_sign_in = _sso
+    return client, calls, asyncio.run
+
+
+def test_a_refused_login_is_remembered_and_never_retried():
+    refused = ayla.AuthError("Gigya login failed (code 403042)", transient=False)
+    client, calls, run = _client_with_login([refused, "jwt"])
+    for _ in range(3):
+        with pytest.raises(ayla.AuthError) as err:
+            run(client.async_authenticate())
+        assert err.value is refused
+    assert len(calls) == 1
+
+
+def test_a_transient_failure_is_retried_on_the_next_sign_in():
+    blip = ayla.AuthError("Gigya 500001", transient=True)
+    client, calls, run = _client_with_login([blip, "jwt"])
+    with pytest.raises(ayla.AuthError):
+        run(client.async_authenticate())
+    run(client.async_authenticate())
+    assert len(calls) == 2
+    assert client._access_token == "token"

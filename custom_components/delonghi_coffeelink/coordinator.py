@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
@@ -49,6 +50,8 @@ from .catalog import (
     catalog_summary,
 )
 from .const import (
+    ACTION_START,
+    ACTION_START_APP,
     ACTION_STOP,
     APP_ID_PROPERTY,
     COMMAND_PROPERTY_CANDIDATES,
@@ -79,7 +82,10 @@ _LOGGER = logging.getLogger(__name__)
 def _surface_cloud_errors(func):
     """Re-raise a failed cloud write as a HomeAssistantError.
 
-    CloudError and AuthError are plain exceptions, and Home Assistant treats
+    The command write (ayla_client.async_set_property_value) posts directly, so
+    besides CloudError/AuthError a network failure arrives as a raw
+    aiohttp.ClientError or TimeoutError. All of these are plain exceptions, and
+    Home Assistant treats
     anything that is not a HomeAssistantError as a crash: a button press logs a
     traceback, and a script step marked ``continue_on_error`` aborts the whole
     script instead of continuing - which is exactly how a "cloud first, then
@@ -90,7 +96,7 @@ def _surface_cloud_errors(func):
     async def wrapper(self, *args, **kwargs):
         try:
             return await func(self, *args, **kwargs)
-        except (CloudError, AuthError) as err:
+        except (CloudError, AuthError, aiohttp.ClientError, TimeoutError) as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="cloud_command_failed",
@@ -1192,6 +1198,16 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not raw_b64:
             return
         ftype = decoded.get("type")
+        if not self.profile.learns_from_app and decoded.get("action") not in (
+            ACTION_START,
+            ACTION_STOP,
+            ACTION_START_APP,
+        ):
+            # Beverage-only learners (the Soul) take start/stop frames only: any
+            # other action byte would land in the start table and be replayed by
+            # a start button. 0x03 is the app's own "start" (seen on Eletta;
+            # which byte the Soul app sends is not verified).
+            return
 
         if ftype == "power":
             # Beverage-only learners keep their synthesized power frames, which

@@ -47,7 +47,11 @@ def take_snapshot(
     alarms: frozenset[str] | None = None
     monitor = monitor or {}
     if monitor and "error" not in monitor and not stale:
+        # "unknown" is an unmapped status code, not a status: treating it as
+        # one would report ready -> unknown -> ready around every odd frame.
         status = monitor.get("status_name")
+        if status == "unknown":
+            status = None
         if "alarms" in monitor:
             alarms = alarm_names(monitor["alarms"])
     counters: dict[str, int] = {}
@@ -62,13 +66,22 @@ def take_snapshot(
 
 
 def merge(previous: Snapshot | None, new: Snapshot) -> Snapshot:
-    """The snapshot to compare the NEXT poll against: unknowns keep the old value."""
+    """The snapshot to compare the NEXT poll against: unknowns keep the old value.
+
+    Counters only ever move up here. A lower value is a bad read or a reset; if
+    it were kept, the return to the real value would be reported as hundreds of
+    drinks at once. The cost: after a genuine reset (factory reset) no drink is
+    reported until the counter passes its old value again.
+    """
     if previous is None:
         return new
+    counters = dict(previous.counters)
+    for key, value in new.counters.items():
+        counters[key] = max(value, counters.get(key, value))
     return Snapshot(
         status=new.status if new.status is not None else previous.status,
         alarms=new.alarms if new.alarms is not None else previous.alarms,
-        counters={**previous.counters, **new.counters},
+        counters=counters,
     )
 
 

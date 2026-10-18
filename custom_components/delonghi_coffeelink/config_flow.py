@@ -6,11 +6,15 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .ayla_client import AuthError, CloudError, DelonghiAylaClient
+from .ayla_client import (
+    GIGYA_ACCOUNT_LOCKED,
+    AuthError,
+    CloudError,
+    DelonghiAylaClient,
+)
 from .const import CONF_EMAIL, CONF_PASSWORD, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,11 +30,17 @@ STEP_REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
 
 
 def _auth_error_key(err: AuthError) -> str:
-    """A transient sign-in failure is a connection problem, not a bad password."""
+    """Map a sign-in failure to the form error the user can act on.
+
+    A locked account gets its own message: "invalid password" there invites
+    exactly the further attempts that keep it locked.
+    """
+    if err.code == GIGYA_ACCOUNT_LOCKED:
+        return "account_locked"
     return "cannot_connect" if err.transient else "invalid_auth"
 
 
-class DelonghiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class DelonghiConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the config flow."""
 
     VERSION = 1

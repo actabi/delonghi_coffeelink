@@ -21,7 +21,8 @@
       "invalid_auth": "Ungültige E-Mail-Adresse oder ungültiges Passwort.",
       "cannot_connect": "Verbindung zur DeLonghi-Cloud fehlgeschlagen.",
       "no_devices": "In diesem Konto wurden keine DeLonghi-Geräte gefunden.",
-      "unknown": "Unerwarteter Fehler."
+      "unknown": "Unerwarteter Fehler.",
+      "account_locked": "De'Longhi hat dieses Konto nach zu vielen fehlgeschlagenen Anmeldungen vorübergehend gesperrt. Warte etwa 30 Minuten, bevor du es erneut versuchst - jeder Versuch in der Zwischenzeit verlängert die Sperre."
     },
     "abort": {
       "already_configured": "Dieses Konto ist bereits konfiguriert.",

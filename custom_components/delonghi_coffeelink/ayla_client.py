@@ -45,24 +45,48 @@ class AuthError(Exception):
     retried forever behind ConfigEntryNotReady - one full login per attempt.
     """
 
-    def __init__(self, message: str, *, transient: bool = False) -> None:
+    def __init__(
+        self, message: str, *, transient: bool = False, code: int | None = None
+    ) -> None:
         super().__init__(message)
         self.transient = transient
+        # The Gigya errorCode when there was one (403120 = account locked).
+        self.code = code
+
+
+# Gigya account temporarily locked out after too many failed logins.
+GIGYA_ACCOUNT_LOCKED = 403120
+# Gigya "rate limit exceeded" (SAP KBA 2702339): the request was throttled, the
+# credentials were not judged.
+GIGYA_RATE_LIMITED = 403048
+
+
+def _gigya_code(error_code: object) -> int | None:
+    try:
+        return int(error_code)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return None
 
 
 def gigya_error_is_transient(error_code: object) -> bool:
     """True when a Gigya ``errorCode`` is worth retrying.
 
-    Gigya codes carry the HTTP class in their first three digits: 4xxxxx is the
-    request being refused (403042 invalid login ID or password, 403120 account
-    temporarily locked out), 5xxxxx the service failing. A code that is not even
-    an integer is treated as transient - it says nothing about the credentials.
+    Gigya codes carry the HTTP class in their first three digits. Retryable:
+    5xxxxx (the service failing) and 403048 (rate limited). Everything else is
+    a refusal that needs the user - 403042 invalid login ID or password, 403120
+    account locked, 2xxxxx account pending registration or verification - and
+    retrying it is one more failed login each time. A code that is not even an
+    integer says nothing about the credentials, so it is retried.
     """
-    try:
-        code = int(error_code)  # type: ignore[call-overload]
-    except (TypeError, ValueError):
+    code = _gigya_code(error_code)
+    if code is None:
         return True
-    return not 400000 <= code < 500000
+    return 500000 <= code < 600000 or code == GIGYA_RATE_LIMITED
+
+
+def ayla_sso_status_is_transient(status: int) -> bool:
+    """Ayla SSO HTTP statuses worth retrying: timeouts, throttling, server errors."""
+    return status in (408, 429) or status >= 500
 
 
 class CloudError(Exception):
@@ -107,6 +131,12 @@ class DelonghiAylaClient:
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._expires_at: float = 0
+        # Set once the cloud refuses these credentials. Every later sign-in
+        # fails fast with it instead of trying the same password again: after
+        # ConfigEntryAuthFailed polling stops, but buttons, services and the
+        # refresh a press requests would otherwise each log in once more. A
+        # reauth reloads the entry, which builds a fresh client.
+        self._refused: AuthError | None = None
 
     @property
     def ads_url(self) -> str:
@@ -121,9 +151,15 @@ class DelonghiAylaClient:
         give up on the entry for good - e.g. after a power cut where HA boots
         before the internet connection is back.
         """
+        if self._refused is not None:
+            raise self._refused
         try:
             jwt = await self._gigya_login_and_jwt()
             await self._ayla_sso_sign_in(jwt)
+        except AuthError as err:
+            if not err.transient:
+                self._refused = err
+            raise
         except (aiohttp.ClientError, TimeoutError, ValueError, KeyError) as err:
             raise AuthError(
                 f"Sign-in failed before the cloud answered: {type(err).__name__}: {err}",
@@ -275,6 +311,7 @@ class DelonghiAylaClient:
             raise AuthError(
                 f"Gigya login failed: {body.get('errorMessage')} (code {body.get('errorCode')})",
                 transient=gigya_error_is_transient(body.get("errorCode")),
+                code=_gigya_code(body.get("errorCode")),
             )
 
         session_token = body["sessionInfo"]["sessionToken"]
@@ -305,6 +342,7 @@ class DelonghiAylaClient:
                 f"Gigya getJWT failed: {jwt_body.get('errorMessage')} "
                 f"(code {jwt_body.get('errorCode')})",
                 transient=gigya_error_is_transient(jwt_body.get("errorCode")),
+                code=_gigya_code(jwt_body.get("errorCode")),
             )
         return jwt_body["id_token"]
 
@@ -316,10 +354,11 @@ class DelonghiAylaClient:
             if resp.status not in (200, 201):
                 text = await resp.text()
                 # A 4xx is the token or app credentials being refused - retrying
-                # repeats a full Gigya password login every poll. A 5xx is Ayla.
+                # repeats a full Gigya password login every poll - except a
+                # timeout or throttle (408/429). A 5xx is Ayla having trouble.
                 raise AuthError(
                     f"Ayla SSO failed (HTTP {resp.status}): {text[:300]}",
-                    transient=resp.status >= 500,
+                    transient=ayla_sso_status_is_transient(resp.status),
                 )
             body = await resp.json()
         if "access_token" not in body:

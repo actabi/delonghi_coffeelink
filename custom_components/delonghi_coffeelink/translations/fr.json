@@ -21,7 +21,8 @@
       "invalid_auth": "E-mail ou mot de passe invalide.",
       "cannot_connect": "Connexion au cloud De'Longhi impossible.",
       "no_devices": "Aucun appareil De'Longhi trouvé sur ce compte.",
-      "unknown": "Erreur inattendue."
+      "unknown": "Erreur inattendue.",
+      "account_locked": "De'Longhi a temporairement bloqué ce compte après trop d'échecs de connexion. Attendez environ 30 minutes avant de réessayer : chaque tentative entre-temps maintient le blocage."
     },
     "abort": {
       "already_configured": "Ce compte est déjà configuré.",

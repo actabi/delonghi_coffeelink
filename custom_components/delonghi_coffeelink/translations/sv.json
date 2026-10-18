@@ -21,7 +21,8 @@
       "invalid_auth": "Ogiltig e-postadress eller ogiltigt lösenord.",
       "cannot_connect": "Det gick inte att ansluta till De'Longhis moln.",
       "no_devices": "Inga De'Longhi-enheter hittades på det här kontot.",
-      "unknown": "Oväntat fel."
+      "unknown": "Oväntat fel.",
+      "account_locked": "De'Longhi har tillfälligt låst kontot efter för många misslyckade inloggningar. Vänta cirka 30 minuter innan du försöker igen - varje försök under tiden förlänger spärren."
     },
     "abort": {
       "already_configured": "Det här kontot är redan konfigurerat.",
