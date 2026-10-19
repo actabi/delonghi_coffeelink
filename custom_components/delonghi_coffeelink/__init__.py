@@ -119,7 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_registry = dr.async_get(hass)
     coordinators: list[DelonghiCoordinator] = []
     for device in devices:
-        registered = device_registry.async_get_device({(DOMAIN, device.dsn)})
+        registered = _registered_device(device_registry, entry.entry_id, device.dsn)
         if registered is not None and registered.disabled:
             _LOGGER.info("Skipping dsn=%s: device disabled in Home Assistant", device.dsn)
             continue
@@ -359,6 +359,20 @@ def _resolve_targets(hass: HomeAssistant, call: ServiceCall) -> list[DelonghiCoo
     return targets
 
 
+def _registered_device(registry: dr.DeviceRegistry, entry_id: str | None, dsn: str) -> dr.DeviceEntry | None:
+    """The device-registry entry of a machine, on old and new Home Assistant alike.
+
+    Home Assistant deprecated `async_get_device` because identifiers are no longer
+    unique across config entries; it stops working in 2027.8. Newer versions offer
+    `async_get_device_by_identifier`, scoped to the config entry. Older versions only
+    have the old call, so fall back to it there.
+    """
+    by_identifier = getattr(registry, "async_get_device_by_identifier", None)
+    if by_identifier is not None and entry_id is not None:
+        return by_identifier((DOMAIN, dsn), entry_id)
+    return registry.async_get_device({(DOMAIN, dsn)})
+
+
 def _label(hass: HomeAssistant, coord: DelonghiCoordinator) -> str:
     """How a machine is named back to the user in an error.
 
@@ -366,7 +380,9 @@ def _label(hass: HomeAssistant, coord: DelonghiCoordinator) -> str:
     A user who renamed their machine to "Kitchen" must not be handed a list of
     cloud names ("Eletta Explore") they cannot find anywhere in the UI.
     """
-    device = dr.async_get(hass).async_get_device({(DOMAIN, coord.device.dsn)})
+    config_entry = getattr(coord, "config_entry", None)
+    entry_id = config_entry.entry_id if config_entry is not None else None
+    device = _registered_device(dr.async_get(hass), entry_id, coord.device.dsn)
     if device is not None:
         named = device.name_by_user or device.name
         if named:

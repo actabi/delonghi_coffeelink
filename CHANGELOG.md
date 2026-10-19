@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
 - Dutch translation.
 
 ### Changed
+- Device-registry lookups use `async_get_device_by_identifier` (scoped to the
+  config entry) where Home Assistant offers it. The old `async_get_device` is
+  deprecated and stops working in Home Assistant 2027.8; older Home Assistant
+  versions keep using it.
 - **Refused credentials start re-authentication** (`ConfigEntryAuthFailed`)
   instead of endless retries that sign in again each time and risk an account
   lockout. A refused login is remembered until the user signs in again; only
