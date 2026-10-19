@@ -46,16 +46,30 @@ class AuthError(Exception):
     """
 
     def __init__(
-        self, message: str, *, transient: bool = False, code: int | None = None
+        self,
+        message: str,
+        *,
+        transient: bool = False,
+        code: int | None = None,
+        kind: str | None = None,
     ) -> None:
         super().__init__(message)
         self.transient = transient
         # The Gigya errorCode when there was one (403120 = account locked).
         self.code = code
+        # "ayla_sso": Gigya accepted the password and Ayla then refused the session.
+        # Not a password problem, so it must not ask the user for the password.
+        self.kind = kind
 
 
 # Gigya account temporarily locked out after too many failed logins.
 GIGYA_ACCOUNT_LOCKED = 403120
+# AuthError.kind when Ayla refuses the session after Gigya accepted the password.
+AYLA_SSO_REFUSED = "ayla_sso"
+# How long such a refusal is answered from memory before one new sign-in is
+# allowed. A little shorter than the coordinator's retry (30 min), so that retry
+# really signs in again.
+AYLA_REFUSED_PAUSE = 25 * 60
 # Gigya "Request has expired": the signed getJWT timestamp is too far from
 # Gigya's clock (SAP KBA 2702335). The password was accepted; the HA host's clock
 # is wrong. Refused like a credential error - retrying cannot help until the
@@ -142,6 +156,9 @@ class DelonghiAylaClient:
         # refresh a press requests would otherwise each log in once more. A
         # reauth reloads the entry, which builds a fresh client.
         self._refused: AuthError | None = None
+        # When it was refused (monotonic). An Ayla refusal (password accepted) is
+        # only remembered for AYLA_REFUSED_PAUSE; a refused password for good.
+        self._refused_at: float = 0
 
     @property
     def ads_url(self) -> str:
@@ -157,13 +174,19 @@ class DelonghiAylaClient:
         before the internet connection is back.
         """
         if self._refused is not None:
-            raise self._refused
+            if (
+                self._refused.kind != AYLA_SSO_REFUSED
+                or time.monotonic() - self._refused_at < AYLA_REFUSED_PAUSE
+            ):
+                raise self._refused
+            self._refused = None  # the pause is over: one new sign-in
         try:
             jwt = await self._gigya_login_and_jwt()
             await self._ayla_sso_sign_in(jwt)
         except AuthError as err:
             if not err.transient:
                 self._refused = err
+                self._refused_at = time.monotonic()
             raise
         except (aiohttp.ClientError, TimeoutError, ValueError, KeyError) as err:
             raise AuthError(
@@ -369,6 +392,7 @@ class DelonghiAylaClient:
                 raise AuthError(
                     f"Ayla SSO failed (HTTP {resp.status}): {text[:300]}",
                     transient=ayla_sso_status_is_transient(resp.status),
+                    kind=AYLA_SSO_REFUSED,
                 )
             body = await resp.json()
         if "access_token" not in body:

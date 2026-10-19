@@ -47,10 +47,13 @@ def _install_stubs() -> None:
     core = types.ModuleType("homeassistant.core")
     core.HomeAssistant = object
     core.ServiceCall = object
+    core.Event = object
+    core.callback = lambda func: func
     exceptions = types.ModuleType("homeassistant.exceptions")
     exceptions.HomeAssistantError = _StubHomeAssistantError
     exceptions.ConfigEntryNotReady = type("ConfigEntryNotReady", (Exception,), {})
     exceptions.ConfigEntryAuthFailed = type("ConfigEntryAuthFailed", (Exception,), {})
+    exceptions.ConfigEntryError = type("ConfigEntryError", (Exception,), {})
     storage = types.ModuleType("homeassistant.helpers.storage")
     storage.Store = object
     upd = types.ModuleType("homeassistant.helpers.update_coordinator")
@@ -74,6 +77,7 @@ def _install_stubs() -> None:
     )
     config_entries = types.ModuleType("homeassistant.config_entries")
     config_entries.ConfigEntry = object
+    config_entries.ConfigEntryState = types.SimpleNamespace(LOADED="loaded")
     cv = types.ModuleType("homeassistant.helpers.config_validation")
     cv.string = str
     # The real helper wraps a scalar; `list` would explode a string into its
@@ -82,8 +86,30 @@ def _install_stubs() -> None:
     device_registry = types.ModuleType("homeassistant.helpers.device_registry")
     device_registry.DeviceInfo = dict
     device_registry.async_get = lambda hass: hass.device_registry
+    device_registry.DeviceEntry = object
+    device_registry.EVENT_DEVICE_REGISTRY_UPDATED = "device_registry_updated"
+    device_registry.async_entries_for_area = lambda reg, area: [
+        d for d in reg.devices.values() if d.area_id == area
+    ]
+    device_registry.async_entries_for_label = lambda reg, label: [
+        d for d in reg.devices.values() if label in d.labels
+    ]
     entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
     entity_registry.async_get = lambda hass: hass.entity_registry
+    entity_registry.async_entries_for_area = lambda reg, area: [
+        e for e in reg.entities.values() if e.area_id == area
+    ]
+    entity_registry.async_entries_for_label = lambda reg, label: [
+        e for e in reg.entities.values() if label in e.labels
+    ]
+    area_registry = types.ModuleType("homeassistant.helpers.area_registry")
+    area_registry.async_get = lambda hass: hass.area_registry
+    area_registry.async_entries_for_floor = lambda reg, floor: [
+        a for a in reg.areas.values() if a.floor_id == floor
+    ]
+    area_registry.async_entries_for_label = lambda reg, label: [
+        a for a in reg.areas.values() if label in a.labels
+    ]
     aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
     aiohttp_client.async_get_clientsession = lambda hass: None
     service = types.ModuleType("homeassistant.helpers.service")
@@ -97,6 +123,7 @@ def _install_stubs() -> None:
     service.async_register_admin_service = _register_admin
     helpers = types.ModuleType("homeassistant.helpers")
     helpers.config_validation = cv
+    helpers.area_registry = area_registry
     helpers.device_registry = device_registry
     helpers.entity_registry = entity_registry
     for name, mod in (
@@ -107,6 +134,7 @@ def _install_stubs() -> None:
         ("homeassistant.exceptions", exceptions),
         ("homeassistant.helpers", helpers),
         ("homeassistant.helpers.aiohttp_client", aiohttp_client),
+        ("homeassistant.helpers.area_registry", area_registry),
         ("homeassistant.helpers.config_validation", cv),
         ("homeassistant.helpers.device_registry", device_registry),
         ("homeassistant.helpers.entity_registry", entity_registry),
@@ -172,12 +200,25 @@ class _FakeCoordinator:
 
 class _RegistryEntry:
     def __init__(self, identifiers, name=None, name_by_user=None, area_id=None,
-                 device_id=None) -> None:
+                 device_id=None, labels=None) -> None:
         self.identifiers = identifiers
         self.name = name
         self.name_by_user = name_by_user
         self.area_id = area_id
         self.device_id = device_id
+        self.labels = set(labels or ())
+
+
+class _Area:
+    def __init__(self, area_id: str, floor_id: str | None = None, labels=None) -> None:
+        self.id = area_id
+        self.floor_id = floor_id
+        self.labels = set(labels or ())
+
+
+class _FakeAreaRegistry:
+    def __init__(self, areas: list[_Area] | None = None) -> None:
+        self.areas = {area.id: area for area in areas or []}
 
 
 class _FakeDeviceRegistry:
@@ -249,6 +290,7 @@ class _FakeHass:
         self.services = _FakeServices()
         self.device_registry = _FakeDeviceRegistry({})
         self.entity_registry = _FakeEntityRegistry()
+        self.area_registry = _FakeAreaRegistry()
         self.config_entries = _FakeConfigEntries()
 
 
@@ -722,3 +764,32 @@ def test_a_reload_of_the_only_entry_keeps_the_services():
     asyncio.run(dl.async_unload_entry(hass, types.SimpleNamespace(entry_id="entry_1")))
 
     assert const.SERVICE_START_BEVERAGE in hass.services.handlers
+
+
+def test_a_floor_target_resolves_through_its_areas():
+    soul, eletta = _machines("PrimaDonna Soul", "Eletta Explore")
+    hass = _hass_with(("entry_1", [soul, eletta]))
+    hass.area_registry = _FakeAreaRegistry([_Area("kitchen", "ground"), _Area("office", "upstairs")])
+    hass.device_registry.devices["dev_AC000"].area_id = "kitchen"
+    hass.device_registry.devices["dev_AC001"].area_id = "office"
+    targets = dl._resolve_targets(hass, _Call(beverage="espresso", floor_id=["ground"]))
+    assert targets == [soul]
+
+
+def test_a_label_on_the_device_or_its_area_resolves():
+    soul, eletta = _machines("PrimaDonna Soul", "Eletta Explore")
+    hass = _hass_with(("entry_1", [soul, eletta]))
+    hass.area_registry = _FakeAreaRegistry([_Area("office", labels={"coffee"})])
+    hass.device_registry.devices["dev_AC000"].labels = {"coffee"}
+    hass.device_registry.devices["dev_AC001"].area_id = "office"
+    targets = dl._resolve_targets(hass, _Call(beverage="espresso", label_id=["coffee"]))
+    assert sorted(t.device.dsn for t in targets) == ["AC000", "AC001"]
+
+
+def test_a_floor_without_machines_is_refused():
+    soul, = _machines("PrimaDonna Soul")
+    hass = _hass_with(("entry_1", [soul]))
+    hass.area_registry = _FakeAreaRegistry([_Area("attic", "top")])
+    with pytest.raises(_StubHomeAssistantError) as err:
+        dl._resolve_targets(hass, _Call(beverage="espresso", floor_id=["top"]))
+    assert err.value.translation_key == "target_matched_no_machine"

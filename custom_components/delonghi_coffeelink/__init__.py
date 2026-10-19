@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import (
     ATTR_AREA_ID,
     ATTR_DEVICE_ID,
@@ -13,19 +13,21 @@ from homeassistant.const import (
     ATTR_LABEL_ID,
     Platform,
 )
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
+    ConfigEntryError,
     ConfigEntryNotReady,
     HomeAssistantError,
 )
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_register_admin_service
 
-from .ayla_client import AuthError, CloudError, DelonghiAylaClient
+from .ayla_client import AYLA_SSO_REFUSED, AuthError, CloudError, DelonghiAylaClient
 from .const import (
     ACTION_START,
     ACTION_STOP,
@@ -91,6 +93,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Refused credentials must NOT be retried: ConfigEntryNotReady retries
         # forever, one full password login each time, until Gigya locks the
         # account. ConfigEntryAuthFailed stops and asks the user to sign in.
+        if err.kind == AYLA_SSO_REFUSED and not err.transient:
+            # Gigya accepted the password; Ayla refused the session. Asking for the
+            # password cannot help, and ConfigEntryNotReady would sign in again every
+            # minute or so. Stop with a readable error; a reload tries again.
+            raise ConfigEntryError(
+                translation_domain=DOMAIN, translation_key="ayla_refused"
+            ) from err
         if not err.transient:
             raise ConfigEntryAuthFailed(f"DeLonghi sign-in refused: {err}") from err
         raise ConfigEntryNotReady(f"DeLonghi auth failed: {err}") from err
@@ -152,7 +161,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _register_services(hass)
 
+    @callback
+    def _device_enabled_changed(event: Event) -> None:
+        # Home Assistant reloads an entry when its entities are enabled again, but
+        # not when they are disabled. Without this, a disabled machine keeps its
+        # coordinator and can still be reached by an untargeted service call.
+        if event.data.get("action") != "update" or "disabled_by" not in event.data.get("changes", {}):
+            return
+        device = dr.async_get(hass).async_get(event.data["device_id"])
+        if device is not None and _belongs_to(device, entry.entry_id):
+            hass.config_entries.async_schedule_reload(entry.entry_id)
+
+    entry.async_on_unload(
+        hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _device_enabled_changed)
+    )
+
     return True
+
+
+def _belongs_to(device: dr.DeviceEntry, entry_id: str) -> bool:
+    """Whether a device belongs to this entry, on old and new Home Assistant alike.
+
+    Newer versions give a device one `config_entry_id` (the `config_entries` set is
+    deprecated there); older versions only have the set.
+    """
+    owner = getattr(device, "config_entry_id", None)
+    if owner is not None:
+        return bool(owner == entry_id)
+    return entry_id in getattr(device, "config_entries", set())
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -180,6 +216,10 @@ async def async_remove_config_entry_device(
     under its own entities. Without this hook HA offers no delete at all, and a
     machine taken off the account stays in the device list forever.
     """
+    if entry.state is not ConfigEntryState.LOADED:
+        # Not loaded (waiting for reauth, setup retry): which machines are live is
+        # unknown, so nothing may be deleted - not even a live machine.
+        return False
     loaded = {coord.device.dsn for coord in hass.data.get(DOMAIN, {}).get(entry.entry_id, [])}
     return not any(
         domain == DOMAIN and ident in loaded for domain, ident in device_entry.identifiers
@@ -258,24 +298,41 @@ def _named_devices(hass: HomeAssistant, call: ServiceCall) -> set[str] | None:
     devices: set[str] = set(data.get(ATTR_DEVICE_ID) or [])
     entity_ids = set(data.get(ATTR_ENTITY_ID) or [])
     areas = set(data.get(ATTR_AREA_ID) or [])
+    floors = set(data.get(ATTR_FLOOR_ID) or [])
+    labels = set(data.get(ATTR_LABEL_ID) or [])
 
     entities = er.async_get(hass)
+    registry = dr.async_get(hass)
     for entity_id in entity_ids:
         entry = entities.async_get(entity_id)
         if entry and entry.device_id:
             devices.add(entry.device_id)
 
-    if areas:
-        registry = dr.async_get(hass)
-        devices.update(
-            device.id for device in registry.devices.values() if device.area_id in areas
-        )
+    # A floor and a label are expanded to their areas; a label can also sit on a
+    # device or an entity directly.
+    if floors or labels:
+        area_registry = ar.async_get(hass)
+        for floor_id in floors:
+            areas.update(area.id for area in ar.async_entries_for_floor(area_registry, floor_id))
+        for label_id in labels:
+            areas.update(area.id for area in ar.async_entries_for_label(area_registry, label_id))
+            devices.update(device.id for device in dr.async_entries_for_label(registry, label_id))
+            devices.update(
+                entry.device_id
+                for entry in er.async_entries_for_label(entities, label_id)
+                if entry.device_id
+            )
+
+    # Per area through the registry helpers: iterating `registry.devices` is
+    # deprecated (stops working in Home Assistant 2027.9).
+    for area_id in areas:
+        devices.update(device.id for device in dr.async_entries_for_area(registry, area_id))
         # An entity can override its device's area, so an area can hold a machine
         # whose device record points elsewhere.
         devices.update(
             entry.device_id
-            for entry in entities.entities.values()
-            if entry.area_id in areas and entry.device_id
+            for entry in er.async_entries_for_area(entities, area_id)
+            if entry.device_id
         )
     return devices
 

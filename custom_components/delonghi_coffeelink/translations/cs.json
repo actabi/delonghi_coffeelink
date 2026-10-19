@@ -23,7 +23,8 @@
       "no_devices": "U tohoto účtu nebyl nalezen žádný kávovar De'Longhi.",
       "unknown": "Došlo k neočekávané chybě.",
       "account_locked": "De'Longhi tento účet dočasně zablokoval po příliš mnoha neúspěšných přihlášeních. Počkejte asi 30 minut, než to zkusíte znovu – každý pokus mezitím blokaci prodlužuje.",
-      "clock_skew": "De'Longhi přihlášení odmítl, protože hodiny hostitele Home Assistant se liší o více než asi dvě minuty. Opravte čas (NTP) a zkuste to znovu."
+      "clock_skew": "De'Longhi přihlášení odmítl, protože hodiny hostitele Home Assistant se liší o více než asi dvě minuty. Opravte čas (NTP) a zkuste to znovu.",
+      "ayla_refused": "De'Longhi přijal heslo, ale cloud zařízení (Ayla) relaci odmítl. Nejde o problém s heslem; zkuste to později znovu."
     },
     "abort": {
       "already_configured": "Tento účet je již nakonfigurován.",
@@ -238,6 +239,9 @@
     },
     "cloud_command_failed": {
       "message": "Cloud De'Longhi příkaz nepřijal: {error}"
+    },
+    "ayla_refused": {
+      "message": "De'Longhi přijal heslo, ale cloud zařízení (Ayla) relaci odmítl. Nejde o problém s heslem; zkuste to později znovu."
     }
   }
 }

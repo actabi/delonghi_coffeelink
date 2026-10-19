@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .ayla_client import (
+    AYLA_SSO_REFUSED,
     GIGYA_ACCOUNT_LOCKED,
     GIGYA_REQUEST_EXPIRED,
     AuthError,
@@ -41,6 +42,9 @@ def _auth_error_key(err: AuthError) -> str:
         return "account_locked"
     if err.code == GIGYA_REQUEST_EXPIRED:
         return "clock_skew"
+    if err.kind == AYLA_SSO_REFUSED and not err.transient:
+        # The password was accepted; asking for it again cannot help.
+        return "ayla_refused"
     return "cannot_connect" if err.transient else "invalid_auth"
 
 

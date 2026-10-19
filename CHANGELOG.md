@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.
   the cloud. Not verified; on an ECAM 610.75 it got no reply.
 - A disabled-by-default diagnostic button to forget learned commands.
 - Dutch translation.
+- Service targets can be floors and labels as well as areas.
+- Attribute `keepalive_failures` on the "status last published" sensor, so an
+  automation can tell a stalled Wi-Fi module from failing keep-alive writes.
 
 ### Changed
 - Device-registry lookups use `async_get_device_by_identifier` (scoped to the
@@ -36,12 +39,22 @@ All notable changes to this project will be documented in this file.
   response channel.
 - `send_raw_command` is admin-only.
 - Minimum Home Assistant version 2024.11.0.
+- A temporary sign-in failure backs off 1, 2, 4 ... up to 15 minutes instead of
+  signing in again every poll; each try is a full password login.
+- Ayla refusing the session after Gigya accepted the password gets its own
+  message instead of a password question, and a new try after 30 minutes
+  (remembered for 25 minutes, so buttons do not sign in again meanwhile).
+- Area targets use the registry helpers instead of iterating the registries,
+  which Home Assistant deprecated (stops working in 2027.9).
 
 ### Fixed
 - Cloud write errors, including raw network errors and timeouts, surface as
   `HomeAssistantError`, so scripts using `continue_on_error` keep going.
 - Devices disabled in Home Assistant are no longer polled, and a device the
-  entry no longer serves can be deleted.
+  entry no longer serves can be deleted. Disabling or enabling the device now
+  reloads the entry by itself, and no device can be deleted while the entry is
+  not loaded.
+- The entry diagnostics no longer use the device serial number (DSN) as a key.
 - A counter that drops (a bad read or a reset) no longer produces a drink
   event.
 

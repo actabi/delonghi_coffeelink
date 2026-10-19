@@ -322,6 +322,13 @@ class DelonghiMonitorPublishedSensor(_Base):
             return None
         return published
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        # A keepalive that keeps failing also leaves this time standing still. An
+        # automation that power-cycles a "stalled" module must be able to tell the
+        # two apart: with failing keepalives, the module itself may be fine.
+        return {"keepalive_failures": self.coordinator.keepalive_failures}
+
 
 class DelonghiMachineStatusSensor(_Base):
     """Machine operational state (standby, ready, rinsing, ...) decoded from the

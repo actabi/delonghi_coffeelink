@@ -23,7 +23,8 @@
       "no_devices": "No DeLonghi devices found on this account.",
       "unknown": "Unexpected error.",
       "account_locked": "De'Longhi has temporarily locked this account after too many failed sign-ins. Wait about 30 minutes before trying again - every attempt in the meantime keeps it locked.",
-      "clock_skew": "De'Longhi rejected the sign-in because the clock of the Home Assistant host is off by more than about two minutes. Fix the time (NTP) on that host, then try again."
+      "clock_skew": "De'Longhi rejected the sign-in because the clock of the Home Assistant host is off by more than about two minutes. Fix the time (NTP) on that host, then try again.",
+      "ayla_refused": "De'Longhi accepted the password, but its device cloud (Ayla) refused the session. This is not a password problem; try again later."
     },
     "abort": {
       "already_configured": "This account is already configured.",
@@ -394,6 +395,9 @@
     },
     "cloud_command_failed": {
       "message": "The De'Longhi cloud did not accept the command: {error}"
+    },
+    "ayla_refused": {
+      "message": "De'Longhi accepted the password, but its device cloud (Ayla) refused the session. This is not a password problem; try again later."
     }
   }
 }

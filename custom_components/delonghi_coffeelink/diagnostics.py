@@ -110,10 +110,8 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
-        "machines": {
-            coord.device.dsn: coordinator_diagnostics(coord)
-            for coord in _coordinators(hass, entry)
-        },
+        # A list, not a dict keyed by DSN: the DSN is the Ayla device serial number.
+        "machines": [coordinator_diagnostics(coord) for coord in _coordinators(hass, entry)],
     }
 
 
@@ -123,5 +121,5 @@ async def async_get_device_diagnostics(
     dsns = {ident for domain, ident in device.identifiers if domain == DOMAIN}
     for coord in _coordinators(hass, entry):
         if coord.device.dsn in dsns:
-            return {"dsn": coord.device.dsn, **coordinator_diagnostics(coord)}
+            return coordinator_diagnostics(coord)
     return {"error": "machine not loaded (removed from the account, or disabled in Home Assistant)"}

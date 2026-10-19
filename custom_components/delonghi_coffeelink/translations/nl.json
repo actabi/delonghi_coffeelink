@@ -23,7 +23,8 @@
       "no_devices": "Geen De'Longhi-apparaten gevonden in dit account.",
       "unknown": "Onverwachte fout.",
       "account_locked": "De'Longhi heeft dit account tijdelijk geblokkeerd na te veel mislukte aanmeldingen. Wacht ongeveer 30 minuten voordat je het opnieuw probeert; elke poging in de tussentijd houdt de blokkade in stand.",
-      "clock_skew": "De'Longhi weigert de aanmelding omdat de klok van de Home Assistant-host meer dan ongeveer twee minuten afwijkt. Zet de tijd (NTP) op die host goed en probeer het opnieuw."
+      "clock_skew": "De'Longhi weigert de aanmelding omdat de klok van de Home Assistant-host meer dan ongeveer twee minuten afwijkt. Zet de tijd (NTP) op die host goed en probeer het opnieuw.",
+      "ayla_refused": "De'Longhi heeft het wachtwoord geaccepteerd, maar de apparatencloud (Ayla) weigert de sessie. Dit ligt niet aan het wachtwoord; probeer het later opnieuw."
     },
     "abort": {
       "already_configured": "Dit account is al ingesteld.",
@@ -394,6 +395,9 @@
     },
     "cloud_command_failed": {
       "message": "De De'Longhi-cloud heeft het commando niet aangenomen: {error}"
+    },
+    "ayla_refused": {
+      "message": "De'Longhi heeft het wachtwoord geaccepteerd, maar de apparatencloud (Ayla) weigert de sessie. Dit ligt niet aan het wachtwoord; probeer het later opnieuw."
     }
   }
 }

@@ -23,7 +23,8 @@
       "no_devices": "In diesem Konto wurden keine DeLonghi-Geräte gefunden.",
       "unknown": "Unerwarteter Fehler.",
       "account_locked": "De'Longhi hat dieses Konto nach zu vielen fehlgeschlagenen Anmeldungen vorübergehend gesperrt. Warte etwa 30 Minuten, bevor du es erneut versuchst - jeder Versuch in der Zwischenzeit verlängert die Sperre.",
-      "clock_skew": "De'Longhi hat die Anmeldung abgelehnt, weil die Uhr des Home-Assistant-Hosts um mehr als etwa zwei Minuten abweicht. Korrigiere die Zeit (NTP) und versuche es erneut."
+      "clock_skew": "De'Longhi hat die Anmeldung abgelehnt, weil die Uhr des Home-Assistant-Hosts um mehr als etwa zwei Minuten abweicht. Korrigiere die Zeit (NTP) und versuche es erneut.",
+      "ayla_refused": "De'Longhi hat das Passwort akzeptiert, aber die Gerätecloud (Ayla) hat die Sitzung abgelehnt. Das liegt nicht am Passwort; versuche es später erneut."
     },
     "abort": {
       "already_configured": "Dieses Konto ist bereits konfiguriert.",
@@ -394,6 +395,9 @@
     },
     "cloud_command_failed": {
       "message": "Die De'Longhi-Cloud hat den Befehl nicht angenommen: {error}"
+    },
+    "ayla_refused": {
+      "message": "De'Longhi hat das Passwort akzeptiert, aber die Gerätecloud (Ayla) hat die Sitzung abgelehnt. Das liegt nicht am Passwort; versuche es später erneut."
     }
   }
 }

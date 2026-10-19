@@ -23,7 +23,8 @@
       "no_devices": "Inga De'Longhi-enheter hittades på det här kontot.",
       "unknown": "Oväntat fel.",
       "account_locked": "De'Longhi har tillfälligt låst kontot efter för många misslyckade inloggningar. Vänta cirka 30 minuter innan du försöker igen - varje försök under tiden förlänger spärren.",
-      "clock_skew": "De'Longhi avvisade inloggningen eftersom klockan på Home Assistant-värden går fel med mer än cirka två minuter. Rätta tiden (NTP) och försök igen."
+      "clock_skew": "De'Longhi avvisade inloggningen eftersom klockan på Home Assistant-värden går fel med mer än cirka två minuter. Rätta tiden (NTP) och försök igen.",
+      "ayla_refused": "De'Longhi godkände lösenordet, men enhetsmolnet (Ayla) nekade sessionen. Det är inte ett lösenordsproblem; försök igen senare."
     },
     "abort": {
       "already_configured": "Det här kontot är redan konfigurerat.",
@@ -394,6 +395,9 @@
     },
     "cloud_command_failed": {
       "message": "De'Longhi-molnet tog inte emot kommandot: {error}"
+    },
+    "ayla_refused": {
+      "message": "De'Longhi godkände lösenordet, men enhetsmolnet (Ayla) nekade sessionen. Det är inte ett lösenordsproblem; försök igen senare."
     }
   }
 }

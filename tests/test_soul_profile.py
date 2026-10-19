@@ -303,6 +303,25 @@ def test_a_refused_login_is_remembered_and_never_retried():
     assert len(calls) == 1
 
 
+def test_an_ayla_refusal_is_remembered_for_a_while_then_tried_once_more(monkeypatch):
+    """Gigya accepted the password; Ayla refused. Not for good, but not every press either."""
+    now = [1000.0]
+    monkeypatch.setattr(ayla.time, "monotonic", lambda: now[0])
+    refused = ayla.AuthError("Ayla SSO failed (HTTP 403)", transient=False, kind=ayla.AYLA_SSO_REFUSED)
+    client, calls, run = _client_with_login([refused, "jwt"])
+    with pytest.raises(ayla.AuthError):
+        run(client.async_authenticate())
+    now[0] += ayla.AYLA_REFUSED_PAUSE - 1
+    with pytest.raises(ayla.AuthError) as err:
+        run(client.async_authenticate())
+    assert err.value is refused
+    assert len(calls) == 1  # answered from memory
+    now[0] += 2
+    run(client.async_authenticate())
+    assert len(calls) == 2
+    assert client._access_token == "token"
+
+
 def test_a_transient_failure_is_retried_on_the_next_sign_in():
     blip = ayla.AuthError("Gigya 500001", transient=True)
     client, calls, run = _client_with_login([blip, "jwt"])
