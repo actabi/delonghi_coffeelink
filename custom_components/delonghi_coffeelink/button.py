@@ -38,6 +38,10 @@ async def async_setup_entry(
             entities.append(DelonghiStartBeverageButton(coord, bev_id, key, friendly, icon))
         entities.append(DelonghiStopButton(coord))
         entities.append(DelonghiDumpRecipesButton(coord))
+        # One button per profile the machine's display offers; a machine that
+        # offers none simply gets none.
+        for slot, label in coord.user_profile_labels().items():
+            entities.append(DelonghiSetProfileButton(coord, slot, label))
     async_add_entities(entities)
 
 
@@ -167,3 +171,26 @@ class DelonghiDumpRecipesButton(_Base):
 
     async def async_press(self) -> None:
         self.coordinator.log_recipe_datapoints()
+
+
+class DelonghiSetProfileButton(_Base):
+    """Switch the machine to one user profile (a9 f0), one button per profile.
+
+    A button and deliberately not a select: a profile changed on the machine's
+    own panel produces no cloud traffic at all, so nothing here may claim to
+    know which profile is active - a select would show a value that can be
+    silently wrong for hours. A button claims nothing and is always pressable.
+    """
+
+    def __init__(self, coord: DelonghiCoordinator, slot: int, label: str) -> None:
+        super().__init__(coord)
+        self._slot = slot
+        self._attr_unique_id = f"{coord.device.dsn}_set_profile_{slot}"
+        self._attr_translation_key = "set_profile"
+        self._attr_translation_placeholders = {"profile": label}
+        self._attr_icon = "mdi:account"
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    async def async_press(self) -> None:
+        _LOGGER.info("Switching to user profile %d (%s)", self._slot, self.name)
+        await self.coordinator.async_send_profile(self._slot)

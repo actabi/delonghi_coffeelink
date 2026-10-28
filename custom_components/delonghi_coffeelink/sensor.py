@@ -447,6 +447,8 @@ class DelonghiLastCommandSensor(_Base):
             "action_name",
             "recipe",
             "params",
+            "profile",
+            "status",
             "crc",
             "crc_valid",
             "matches_integration",

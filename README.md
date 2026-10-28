@@ -22,6 +22,11 @@ Any DeLonghi coffee machine exposed by the Coffee Link mobile app through Ayla N
 
 - 21 beverage buttons (Espresso, Cappuccino, Latte Macchiato, Hot Water, Tea, etc.)
 - **Wake** and **Standby** buttons (power the machine on / off remotely)
+- **Profile** buttons - one per user profile the machine offers, named as the
+  household named them; pressing one switches the machine to that profile. They
+  are buttons rather than a dropdown because the machine never reports which
+  profile is active: a change made on its own panel produces no cloud traffic at
+  all, so anything claiming to show the current profile would be guessing.
 - Counter sensors: lifetime totals split the way the machine actually splits
   them (black / coffee+milk / milk-only / other), per-drink counters, water and
   filter volumes in litres, descale status
@@ -69,6 +74,13 @@ The official app has no power-off control, so this frame is always synthesized
 models it needs the per-device signature, which is taken from any frame already
 learned (e.g. the wake frame) - so once the Wake teach step above is done, the
 **Standby** button works too.
+
+**Profile**
+The **Profile** buttons synthesize their frame the same way standby does (family
+`a9 f0`, the same 4-byte session tail appended), so they need the same one-time
+Wake teach step. Profile switching is **untested on the Eletta** over the cloud -
+the frame is verified against a capture of the official app on the Soul only.
+If you have an Eletta, open an issue with the result.
 
 > If you change a drink's settings in the app (e.g. quantity), start it once more from the app so Home Assistant re-learns the new bytes.
 

@@ -18,8 +18,8 @@ family       n     meaning
 ``b0 f0``    28    factory descriptor - the capability schema (min/default/max)
 ``a6 f0``    140   per-profile instance - the current value of each parameter
 ``a8 f0``    5     a per-profile ordered short list of beverage ids
-``a4 f0``    2     profile names (UTF-16BE, user-entered)
-``aa f0``    2     custom-recipe slot names
+``a4 f0``    2     profile names (21-byte cells of UTF-16BE, user-entered)
+``aa f0``    2     custom-recipe slot names (same 21-byte cells)
 ``ba f0``    7     bean-system names
 ===========  ====  ==============================================================
 
@@ -298,12 +298,12 @@ def parse_triples(payload: bytes) -> dict[int, tuple[int, int, int]] | None:
 
 
 def decode_text(payload: bytes) -> str | None:
-    """Decode the first UTF-16BE name in a text blob payload.
+    """Decode one NUL-padded UTF-16BE name from the start of ``payload``.
 
-    Names live in NUL-padded fixed-width slots, but the slot width varies with
-    the blob and a name shorter than the slot leaves the following slots
-    misaligned - so only the first name is read. Returns ``None`` when the slot
-    is empty or the bytes do not decode.
+    Reads up to the first NUL character only, so hand it a single cell (see
+    :func:`decode_slot_names`) or the head of a blob whose later cells you do
+    not want. Returns ``None`` when the cell is empty or the bytes do not
+    decode.
     """
     try:
         text = payload.decode("utf-16-be", errors="ignore")
@@ -311,6 +311,54 @@ def decode_text(payload: bytes) -> str | None:
         return None
     name = text.split("\x00", 1)[0].strip()
     return name or None
+
+
+#: One cell of a profile-name or custom-name blob: 20 bytes of NUL-padded
+#: UTF-16BE text, then one metadata byte (the icon id on profiles, a flag on
+#: custom slots). Read off an untruncated PrimaDonna Soul dump on 2026-09-08:
+#: ``d0 47 a4 f0 01 03`` then three such cells and a trailing NUL, CRC valid.
+NAME_CELL_TEXT = 20
+NAME_CELL_STRIDE = 21
+
+
+def decode_slot_cells(payload: bytes) -> dict[int, str | None]:
+    """Every cell in a profile- or custom-name blob, keyed by slot.
+
+    ``payload = <first slot> <last slot>`` followed by one 21-byte cell per
+    slot in that range. A slot the machine does not support gets no cell at
+    all: the reference Soul offers three profiles on its display and publishes
+    ``d0 08 a4 f0 04 05 00 <crc>`` for slots 4-5, a single NUL where two cells
+    would be - even though it publishes recipes and priority lists for all
+    five. The presence of a cell is therefore the machine's own statement that
+    the slot exists, and the value is its name, ``None`` when the cell is blank.
+    Reading stops at the first cell the payload cannot start - and a cell holds
+    UTF-16 text, so it takes at least one two-byte character to start one; the
+    lone NUL of the 4-5 blob is the machine's "no cells" marker, not a blank
+    cell. A short blob thus yields exactly the cells it holds and never a slot
+    invented from padding.
+
+    Bean-system names (``ba f0``) are laid out differently (one slot per blob)
+    and keep using :func:`decode_text` directly.
+    """
+    if len(payload) < 2:
+        return {}
+    first, last = payload[0], payload[1]
+    if last < first:
+        return {}
+    text = payload[2:]
+    cells: dict[int, str | None] = {}
+    for index, slot in enumerate(range(first, last + 1)):
+        start = index * NAME_CELL_STRIDE
+        cell = text[start : start + NAME_CELL_TEXT]
+        if len(cell) < 2:
+            break
+        cells[slot] = decode_text(cell)
+    return cells
+
+
+def decode_slot_names(payload: bytes) -> dict[int, str]:
+    """The non-blank names in a slot blob, keyed by slot (see decode_slot_cells)."""
+    return {slot: name for slot, name in decode_slot_cells(payload).items() if name}
 
 
 def iter_blobs(props: dict) -> Iterator[tuple[str, dict]]:
@@ -374,6 +422,9 @@ def build_catalog(props: dict) -> dict:
     beverages: dict[int, dict] = {}
     priority: dict[int, list[int]] = {}
     names: dict[str, dict[int, str]] = {"profiles": {}, "custom": {}, "beans": {}}
+    # Slots the machine gave a name cell to - its own word on which profiles
+    # exist, independent of what the cell says. See decode_slot_cells.
+    profile_slots: set[int] = set()
     stats = {
         "blobs": 0,
         "crc_ok": 0,
@@ -445,11 +496,21 @@ def build_catalog(props: dict) -> dict:
                 FAMILY_CUSTOM_NAMES: "custom",
                 FAMILY_BEAN_NAMES: "beans",
             }[family]
-            # payload = <first slot> <last slot> <UTF-16BE text...>; the text
-            # starts at 2, and starting at 1 shifts every character by a byte.
-            text = decode_text(payload[2:])
-            if text:
-                names[bucket][payload[0]] = text
+            if family == FAMILY_BEAN_NAMES:
+                # payload = <slot> 00 <UTF-16BE text...>: one name per blob; the
+                # text starts at 2, and starting at 1 shifts every character.
+                text = decode_text(payload[2:])
+                if text:
+                    names[bucket][payload[0]] = text
+            else:
+                # payload = <first slot> <last slot> then 21-byte cells, one
+                # per slot - see decode_slot_cells for the layout and its proof.
+                cells = decode_slot_cells(payload)
+                if family == FAMILY_PROFILE_NAMES:
+                    profile_slots.update(cells)
+                names[bucket].update(
+                    {slot: name for slot, name in cells.items() if name}
+                )
 
     _apply_priority(beverages, priority)
     for item in beverages.values():
@@ -460,6 +521,7 @@ def build_catalog(props: dict) -> dict:
         "beverages": beverages,
         "priority_lists": priority,
         "names": names,
+        "profile_slots": sorted(profile_slots),
         "stats": stats,
     }
 
@@ -522,6 +584,58 @@ def catalog_beverage_ids(catalog: dict | None) -> set[int]:
         return set()
     beverages = catalog.get("beverages", {})
     return {bev_id for bev_id, item in beverages.items() if item["declared"]}
+
+
+def catalog_profile_slots(catalog: dict | None) -> list[int]:
+    """Every user-profile slot the machine mentioned, sorted.
+
+    The union of three independent witnesses - a profile name blob
+    (``a4f0``), a per-profile recipe (``a6f0``) and a per-profile priority
+    list (``a8f0``) - so a slot counts when any one family names it. Feeds the
+    coordinator's "is this slot real" gate before a switch is sent; an empty
+    list means the machine published nothing per profile, and no profile
+    button is created at all.
+    """
+    if not catalog:
+        return []
+    slots: set[int] = set()
+    slots.update(catalog.get("names", {}).get("profiles", {}))
+    for item in catalog.get("beverages", {}).values():
+        slots.update(item.get("profiles", {}))
+    slots.update(catalog.get("priority_lists", {}))
+    return sorted(slots)
+
+
+def catalog_profile_labels(catalog: dict | None) -> dict[int, str]:
+    """A display label per profile slot the machine actually offers, unique.
+
+    Which slots: the ones the machine gave a name cell to (``profile_slots``),
+    whenever a name blob was read at all. The reference Soul shows three
+    profiles on its display yet publishes recipes and priority lists for five;
+    its name blob for slots 4-5 is a bare NUL (2026-09-08 dump,
+    ``d0 08 a4 f0 04 05 00 <crc>``). Those two slots are firmware capacity, not
+    choices, and a button for them would offer profiles the machine's own
+    screen does not. A blank cell still counts as a slot, labelled with the
+    machine's own default ``Profile N``. Only when no name blob could be read
+    at all (the truncated reference dump) does every witnessed slot appear
+    under that default - honest about what is unknown rather than silently
+    empty.
+
+    Two buttons must not carry the same name, so any label two or more slots
+    share is suffixed with the slot number for each of them (a household with
+    two "Anna"s). The suffix is applied only on collision, so the common case
+    reads as the machine's display does.
+    """
+    slots = (catalog or {}).get("profile_slots") or catalog_profile_slots(catalog)
+    names = (catalog or {}).get("names", {}).get("profiles", {})
+    labels = {slot: names.get(slot) or f"Profile {slot}" for slot in slots}
+    counts: dict[str, int] = {}
+    for label in labels.values():
+        counts[label] = counts.get(label, 0) + 1
+    return {
+        slot: f"{label} ({slot})" if counts[label] > 1 else label
+        for slot, label in labels.items()
+    }
 
 
 def catalog_summary(catalog: dict | None) -> str:

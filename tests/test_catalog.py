@@ -893,3 +893,231 @@ def test_a_priority_blob_with_no_ids_at_all_is_refused():
     cat = catalog.build_catalog({"d261_1_rec_priority": {"value": blob}})
     assert cat["priority_lists"] == {1: []}
     assert cat["stats"]["short_payloads"] == 0
+
+
+# --- user-profile slots and labels (the select entity's inputs) ------------- #
+
+
+def test_profile_slots_are_read_from_the_reference_machine(cat: dict):
+    """Five profiles, because five families of blobs say so - not a constant.
+
+    The select entity offers exactly these slots and the coordinator refuses
+    to send a switch to any other; a hardcoded ``range(1, 6)`` would offer a
+    sixth profile on a machine that has none, and the machine would answer
+    with a refusal status at best.
+    """
+    assert catalog.catalog_profile_slots(cat) == [1, 2, 3, 4, 5]
+
+
+def test_profile_slots_are_empty_when_there_is_no_catalogue():
+    """No catalogue, no slots, no select - never a guessed default set."""
+    assert catalog.catalog_profile_slots(None) == []
+    assert catalog.catalog_profile_slots({}) == []
+    empty = catalog.build_catalog({})
+    assert catalog.catalog_profile_slots(empty) == []
+    assert catalog.catalog_profile_labels(empty) == {}
+
+
+def test_profile_slots_are_the_union_of_three_witnesses():
+    """A name, a recipe and a priority list each vouch for a different slot.
+
+    Any one family is enough: a profile with a name but no saved recipe yet,
+    or a recipe but no short list, is still a profile the machine has.
+    """
+    cat = catalog.build_catalog(
+        {
+            "d034_profiles_1_3": {
+                "value": _blob(
+                    catalog.FAMILY_PROFILE_NAMES, bytes([1, 3]) + "Alice".encode("utf-16-be")
+                )
+            },
+            "d060_2_rec_espresso": {
+                "value": _blob(catalog.FAMILY_PROFILE_RECIPE, bytes([2, 0x01, 0x1B, 0x02]))
+            },
+            "d263_3_rec_priority": {"value": _blob(catalog.FAMILY_PRIORITY, bytes([3, 0x07]))},
+        }
+    )
+    assert catalog.catalog_profile_slots(cat) == [1, 2, 3]
+
+
+def test_profile_labels_fall_back_to_the_machine_default_on_the_fixture(cat: dict):
+    """The reference dump yields ``Profile N`` for every slot - and that is honest.
+
+    Both name blobs are unreadable there: ``d034_profiles_1_3`` declares 72
+    bytes and the dump tool kept 36, and ``d035_profiles_4_5`` carries a single
+    NUL of text. So ``names["profiles"]`` is empty and the fallback is the
+    machine's own default naming, not an invented one. (The anonymiser did
+    stamp "Profile 2" into d034 - ``f"{label} {idx + 1}"`` with ``idx`` already
+    the 1-based first slot - but a truncated blob is never filed, so that
+    off-by-one cannot reach the labels from this fixture; the next test pins
+    it with whole blobs.)
+    """
+    assert cat["names"]["profiles"] == {}
+    assert catalog.catalog_profile_labels(cat) == {
+        1: "Profile 1",
+        2: "Profile 2",
+        3: "Profile 3",
+        4: "Profile 4",
+        5: "Profile 5",
+    }
+
+
+def _cell(name: str, meta: int = 0) -> bytes:
+    """One 21-byte name cell as the machine lays it out: 20 bytes of NUL-padded
+    UTF-16BE text, then the metadata byte (icon id on profiles, flag on custom
+    slots). Layout read off an untruncated reference Soul dump, 2026-09-08."""
+    text = name.encode("utf-16-be")
+    assert len(text) <= catalog.NAME_CELL_TEXT
+    return text.ljust(catalog.NAME_CELL_TEXT, b"\x00") + bytes([meta])
+
+
+def test_name_blob_cells_are_read_for_every_slot():
+    """The whole reference layout, with the household's names swapped out.
+
+    ``d0 47 a4 f0 01 03`` then three 21-byte cells (icon ids 0x10, 0x0b, 0x03 on
+    the real machine) and one trailing NUL; ``d0 08 a4 f0 04 05 00`` for the two
+    slots that hold no name. Before this, ``decode_text`` stopped at the first
+    NUL and only slot 1 ever got a name - the select would have shown the owner
+    by name and everyone else as ``Profile N``. And the machine's display offers
+    exactly three profiles while its recipes and priority lists cover five, so
+    the unnamed slots 4-5 are counted as witnessed slots but never offered.
+    """
+    cat = catalog.build_catalog(
+        {
+            "d034_profiles_1_3": {
+                "value": _blob(
+                    catalog.FAMILY_PROFILE_NAMES,
+                    bytes([1, 3])
+                    + _cell("Anna", 0x10)
+                    + _cell("Bertil", 0x0B)
+                    + _cell("Guest", 0x03)
+                    + b"\x00",
+                )
+            },
+            "d035_profiles_4_5": {
+                "value": _blob(catalog.FAMILY_PROFILE_NAMES, bytes([4, 5, 0]))
+            },
+            **{
+                f"d26{i}_{i}_rec_priority": {
+                    "value": _blob(catalog.FAMILY_PRIORITY, bytes([i, 0x07]))
+                }
+                for i in range(1, 6)
+            },
+        }
+    )
+    assert cat["names"]["profiles"] == {1: "Anna", 2: "Bertil", 3: "Guest"}
+    assert catalog.catalog_profile_slots(cat) == [1, 2, 3, 4, 5]
+    assert catalog.catalog_profile_labels(cat) == {1: "Anna", 2: "Bertil", 3: "Guest"}
+
+
+def test_custom_name_cells_follow_the_same_layout():
+    """``aa f0`` uses the same 21-byte cells, with a flag where profiles keep an icon.
+
+    Reference bytes: ``d0 46 aa f0 01 03`` then "Ice coffee" (flag 01),
+    "Custom 2" (00), "Custom 3" (00), no trailing NUL - 63 bytes of cells exactly.
+    """
+    cat = catalog.build_catalog(
+        {
+            "d036_recipe_custom_name_1_3": {
+                "value": _blob(
+                    catalog.FAMILY_CUSTOM_NAMES,
+                    bytes([1, 3])
+                    + _cell("Ice coffee", 0x01)
+                    + _cell("Custom 2")
+                    + _cell("Custom 3"),
+                )
+            },
+        }
+    )
+    assert cat["names"]["custom"] == {1: "Ice coffee", 2: "Custom 2", 3: "Custom 3"}
+
+
+def test_a_short_name_blob_yields_only_the_cells_it_holds():
+    """A cell the payload cannot start is the end, not a slot invented from padding.
+
+    The lone NUL the machine publishes for slots 4-5 is one byte, and a cell
+    holds UTF-16 text: a single byte cannot start one, so it is the "no cells"
+    marker and must not surface slot 4 as a blank profile.
+    """
+    assert catalog.decode_slot_cells(bytes([1, 3]) + _cell("Anna", 0x10)) == {1: "Anna"}
+    assert catalog.decode_slot_cells(bytes([4, 5, 0])) == {}
+    assert catalog.decode_slot_cells(bytes([4, 5])) == {}
+    assert catalog.decode_slot_cells(bytes([3, 1]) + _cell("Anna")) == {}
+    assert catalog.decode_slot_cells(b"") == {}
+
+
+def test_a_blank_cell_is_still_a_profile_the_machine_offers():
+    """The cell, not the name, says a slot exists: a profile the household never
+    named still shows on the display, so it must show in the select too, under
+    the machine's own default label. Slots 4-5, with no cell, must not."""
+    cat = catalog.build_catalog(
+        {
+            "d034_profiles_1_3": {
+                "value": _blob(
+                    catalog.FAMILY_PROFILE_NAMES,
+                    bytes([1, 3]) + _cell("Anna", 0x10) + _cell("", 0x0B) + _cell("Guest", 0x03),
+                )
+            },
+            "d035_profiles_4_5": {
+                "value": _blob(catalog.FAMILY_PROFILE_NAMES, bytes([4, 5, 0]))
+            },
+            **{
+                f"d26{i}_{i}_rec_priority": {
+                    "value": _blob(catalog.FAMILY_PRIORITY, bytes([i, 0x07]))
+                }
+                for i in range(1, 6)
+            },
+        }
+    )
+    assert cat["profile_slots"] == [1, 2, 3]
+    assert cat["names"]["profiles"] == {1: "Anna", 3: "Guest"}
+    assert catalog.catalog_profile_labels(cat) == {1: "Anna", 2: "Profile 2", 3: "Guest"}
+
+
+def test_profile_labels_disambiguate_a_shared_name():
+    """Two slots with one name get the slot appended - select options are unique.
+
+    Without the suffix the select would show one option for two profiles and
+    pick the wrong one silently; the untouched slot keeps its plain label so the
+    common case still reads as the machine's display does.
+    """
+    cat = catalog.build_catalog(
+        {
+            "d034_profiles_1_3": {
+                "value": _blob(
+                    catalog.FAMILY_PROFILE_NAMES,
+                    bytes([1, 3]) + _cell("Anna", 1) + _cell("Anna", 2) + _cell("Guest", 3),
+                )
+            },
+        }
+    )
+    assert cat["names"]["profiles"] == {1: "Anna", 2: "Anna", 3: "Guest"}
+    assert catalog.catalog_profile_labels(cat) == {
+        1: "Anna (1)",
+        2: "Anna (2)",
+        3: "Guest",
+    }
+
+
+def test_slots_without_a_cell_are_not_offered_once_any_cell_was_read():
+    """A readable name blob is the machine's own word on which slots exist, so
+    a slot it gave no cell is not offered however many recipes and priority
+    lists mention it - the ``Profile N`` fallback for every witnessed slot is
+    for a machine whose name blobs could not be read at all, never a filler."""
+    cat = catalog.build_catalog(
+        {
+            "d034_profiles_1_3": {
+                "value": _blob(
+                    catalog.FAMILY_PROFILE_NAMES, bytes([1, 3]) + "Alice".encode("utf-16-be")
+                )
+            },
+            **{
+                f"d26{i}_{i}_rec_priority": {
+                    "value": _blob(catalog.FAMILY_PRIORITY, bytes([i, 0x07]))
+                }
+                for i in range(1, 6)
+            },
+        }
+    )
+    assert catalog.catalog_profile_slots(cat) == [1, 2, 3, 4, 5]
+    assert catalog.catalog_profile_labels(cat) == {1: "Alice"}
