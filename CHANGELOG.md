@@ -75,7 +75,8 @@ All notable changes to this project will be documented in this file.
   `device` filter on a service `target:` ("use a device selector instead").
   The three services now filter on the integration's entities, which the
   target picker still resolves to the machine they belong to; the handlers
-  already mapped an entity back to its device, so calls behave the same.
+  already mapped an entity back to its device, so calls behave the same. The same fix
+  had been sent as #52 by rasmusbe on 2026-09-09 and sat unreviewed - thanks.
 
 ## [0.3.25] - 2026-09-09
 
