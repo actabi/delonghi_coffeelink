@@ -6,14 +6,18 @@
         "description": "Enter your Coffee Link account credentials. These are the same you use in the Coffee Link mobile app.",
         "data": {
           "email": "Email",
-          "password": "Password"
+          "password": "Password",
+          "region": "Region"
+        },
+        "data_description": {
+          "region": "Where your Coffee Link account was created. Pick North America for an account opened in the US or Canada."
         }
       }
     },
     "error": {
       "invalid_auth": "Invalid email or password.",
       "cannot_connect": "Failed to connect to DeLonghi cloud.",
-      "no_devices": "No DeLonghi devices found on this account.",
+      "no_devices": "No De'Longhi machine found on this account in the selected region. If the Coffee Link app shows your machine, try the other region.",
       "unknown": "Unexpected error."
     },
     "abort": {

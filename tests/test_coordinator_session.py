@@ -1369,6 +1369,66 @@ def test_no_call_site_is_left_without_a_timeout():
         assert "timeout=_TIMEOUT" in args, f"unbounded Ayla call: {args[:80]}"
 
 
+# --- Ayla region (issue #60) -------------------------------------------------
+
+
+class _RecordingSession(_FakeSession):
+    """Also records what the SSO sign-in posts, which _FakeSession drops."""
+
+    def __init__(self, payload) -> None:
+        super().__init__(payload)
+        self.posts: list[tuple[str, dict]] = []
+
+    def post(self, url, timeout=None, data=None, **kwargs):
+        self.posts.append((url, data))
+        return super().post(url, timeout=timeout, **kwargs)
+
+
+@pytest.mark.parametrize("region", sorted(const.AYLA_REGIONS))
+def test_every_ayla_call_goes_to_the_selected_region(region):
+    """A North American account signs in on the EU cloud and lists no machine.
+
+    That was issue #60: Gigya is global, so the login itself succeeds - the
+    region has to reach BOTH the SSO credentials and every ADS read, or the
+    account still lands on the wrong cloud half the time.
+    """
+    cfg = const.AYLA_REGIONS[region]
+    session = _RecordingSession({"access_token": "z", "expires_in": 3600})
+    client = ac.DelonghiAylaClient(session, "user@example.com", "secret", region)
+
+    asyncio.run(client._ayla_sso_sign_in("jwt"))
+    url, data = session.posts[0]
+    assert url.startswith(cfg["user_url"] + "/")
+    assert (data["app_id"], data["app_secret"]) == (cfg["app_id"], cfg["app_secret"])
+
+    session._payload = []
+    asyncio.run(client.async_get_devices())
+    asyncio.run(client.async_get_properties("DSN"))
+    assert session.calls
+    for _, called in session.calls:
+        assert called.startswith(cfg["ads_url"] + "/"), called
+    assert client.ads_url == cfg["ads_url"]
+
+
+def test_an_entry_without_a_region_stays_on_the_eu_cloud():
+    """Entries created before the region field existed must not move."""
+    client = ac.DelonghiAylaClient(_FakeSession([]), "user@example.com", "secret")
+    assert client.ads_url == const.AYLA_REGIONS[const.REGION_EU]["ads_url"]
+    assert const.DEFAULT_REGION == const.REGION_EU
+
+
+def test_regions_are_distinct_clouds():
+    """Copy-pasting one region's block into another would pass every other test."""
+    eu, us = (const.AYLA_REGIONS[r] for r in (const.REGION_EU, const.REGION_US))
+    for key in ("app_id", "app_secret", "user_url", "ads_url"):
+        assert eu[key] != us[key], key
+
+
+def test_an_unknown_region_is_refused():
+    with pytest.raises(ValueError):
+        ac.DelonghiAylaClient(_FakeSession([]), "user@example.com", "secret", "mars")
+
+
 # --- buttons: availability (logbook "Pressed" storm) ------------------------
 
 def _buttons(coord):

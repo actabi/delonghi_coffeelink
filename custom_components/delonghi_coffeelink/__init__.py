@@ -27,6 +27,8 @@ from .const import (
     BEVERAGES,
     CONF_EMAIL,
     CONF_PASSWORD,
+    CONF_REGION,
+    DEFAULT_REGION,
     DOMAIN,
     SERVICE_SEND_RAW_COMMAND,
     SERVICE_START_BEVERAGE,
@@ -76,7 +78,12 @@ SERVICE_RAW_SCHEMA = vol.Schema(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
-    client = DelonghiAylaClient(session, entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD])
+    client = DelonghiAylaClient(
+        session,
+        entry.data[CONF_EMAIL],
+        entry.data[CONF_PASSWORD],
+        entry.data.get(CONF_REGION, DEFAULT_REGION),
+    )
 
     try:
         await client.async_authenticate()

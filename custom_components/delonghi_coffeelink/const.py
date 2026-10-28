@@ -16,12 +16,31 @@ MANUFACTURER = "De'Longhi"
 PROJECT_URL = "https://github.com/actabi/delonghi_coffeelink"
 
 # Extracted from Coffee Link APK v4.9.6
-APP_ID = "DLonghiCoffeeIdKit-sQ-id"
-APP_SECRET = "DLonghiCoffeeIdKit-HT6b0VNd4y6CSha9ivM5k8navLw"
 GIGYA_API_KEY = "3_e5qn7USZK-QtsIso1wCelqUKAK_IVEsYshRIssQ-X-k55haiZXmKWDHDRul2e5Y2"
+# Gigya is the same for every region: only the Ayla cloud is partitioned.
 GIGYA_BASE_URL = "https://accounts.eu1.gigya.com"
-AYLA_EU_ADS_URL = "https://ads-eu.aylanetworks.com"
-AYLA_EU_USER_URL = "https://user-field-eu.aylanetworks.com"
+
+# Ayla cloud per region (issue #60). The machine lives on ONE of them: a North
+# American account signs in fine on the EU cloud (Gigya is global) and then
+# lists zero devices - "No DeLonghi devices found on this account". Each region
+# has its own app_id/secret pair, both shipped in the Coffee Link APK.
+REGION_EU = "eu"
+REGION_US = "us"
+DEFAULT_REGION = REGION_EU
+AYLA_REGIONS: dict[str, dict[str, str]] = {
+    REGION_EU: {
+        "app_id": "DLonghiCoffeeIdKit-sQ-id",
+        "app_secret": "DLonghiCoffeeIdKit-HT6b0VNd4y6CSha9ivM5k8navLw",
+        "user_url": "https://user-field-eu.aylanetworks.com",
+        "ads_url": "https://ads-eu.aylanetworks.com",
+    },
+    REGION_US: {
+        "app_id": "DeLonghiCoffeeIdKit-yA-id",
+        "app_secret": "DeLonghiCoffeeIdKit-2oUcfCkA0pUIACH8jSCwWsf1RcU",
+        "user_url": "https://user-field.aylanetworks.com",
+        "ads_url": "https://ads-field.aylanetworks.com",
+    },
+}
 
 # Polling
 DEFAULT_SCAN_INTERVAL = 30  # seconds
@@ -95,6 +114,8 @@ TRANSIENT_FAILURE_TOLERANCE = 3
 # Config
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
+# Absent from entries created before 0.3.26: those read as DEFAULT_REGION.
+CONF_REGION = "region"
 
 # CRC16 AUG-CCITT
 CRC_POLY = 0x1021

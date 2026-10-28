@@ -6,14 +6,18 @@
         "description": "Zadejte přihlašovací údaje k účtu Coffee Link. Použijte stejné údaje jako v mobilní aplikaci Coffee Link.",
         "data": {
           "email": "E-mail",
-          "password": "Heslo"
+          "password": "Heslo",
+          "region": "Region"
+        },
+        "data_description": {
+          "region": "Kde byl váš účet Coffee Link vytvořen. Pro účet z USA nebo Kanady zvolte Severní Ameriku."
         }
       }
     },
     "error": {
       "invalid_auth": "Neplatný e-mail nebo heslo.",
       "cannot_connect": "Nepodařilo se připojit ke cloudu De'Longhi.",
-      "no_devices": "U tohoto účtu nebyl nalezen žádný kávovar De'Longhi.",
+      "no_devices": "Ve zvoleném regionu nebyl na tomto účtu nalezen žádný kávovar De'Longhi. Pokud aplikace Coffee Link váš kávovar zobrazuje, zkuste druhý region.",
       "unknown": "Došlo k neočekávané chybě."
     },
     "abort": {

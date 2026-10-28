@@ -6,14 +6,18 @@
         "description": "Ange inloggningsuppgifterna för ditt Coffee Link-konto. Det är samma som du använder i Coffee Link-appen.",
         "data": {
           "email": "E-post",
-          "password": "Lösenord"
+          "password": "Lösenord",
+          "region": "Region"
+        },
+        "data_description": {
+          "region": "Var ditt Coffee Link-konto skapades. Välj Nordamerika för ett konto som skapats i USA eller Kanada."
         }
       }
     },
     "error": {
       "invalid_auth": "Ogiltig e-postadress eller ogiltigt lösenord.",
       "cannot_connect": "Det gick inte att ansluta till De'Longhis moln.",
-      "no_devices": "Inga De'Longhi-enheter hittades på det här kontot.",
+      "no_devices": "Ingen De'Longhi-maskin hittades på det här kontot i den valda regionen. Om Coffee Link-appen visar din maskin, prova den andra regionen.",
       "unknown": "Oväntat fel."
     },
     "abort": {
