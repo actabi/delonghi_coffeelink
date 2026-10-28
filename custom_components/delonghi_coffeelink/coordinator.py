@@ -18,7 +18,6 @@ from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_s
 from .command_builder import (
     app_id_from_signature,
     builder_structural_b64,
-    build_profile_encoded,
     build_profile_with_session_tail_encoded,
     build_session_refresh_encoded,
     build_standby_encoded,
@@ -1366,18 +1365,7 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             async def _do() -> None:
                 try:
-                    value = self.profile.profile_value(
-                        profile_id, self._learned_device_signature(), ts
-                    )
-                    if value is None:
-                        value = build_profile_encoded(profile_id, timestamp=ts)
-                        _LOGGER.warning(
-                            "No learned frame for this %s yet, so the profile command is "
-                            "sent without the device signature and the machine may ignore "
-                            "it. Trigger any command once from the official Coffee Link "
-                            "app (e.g. power-on) so Home Assistant can learn the signature.",
-                            self.profile.label,
-                        )
+                    value = self.profile.profile_value(profile_id, ts)
                 except ValueError as err:
                     raise self.unknown_profile_error(profile_id, slots) from err
                 self._record_sent(value)

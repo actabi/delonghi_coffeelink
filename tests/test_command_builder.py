@@ -842,30 +842,18 @@ def test_decode_other_machine_responses_gain_no_profile_keys(soul_props: dict):
 
 
 def test_profile_value_per_model():
-    """Soul synthesizes the frame; the Eletta needs the device signature first.
+    """The models without a cloud session synthesize the app's frame as is.
 
-    Same contract as ``standby_value``: returning ``None`` without a signature
-    lets the coordinator fall back explicitly and log it, instead of sending a
-    frame the Eletta would most likely drop in silence.
+    The Eletta never reaches ``profile_value``: it has a cloud session, so the
+    coordinator builds its frame with the session tail instead, which
+    ``test_coordinator_session`` pins.
     """
     soul = mp.SoulProfile()
-    out = soul.profile_value(2, None, 0x69E8C5EE)
+    out = soul.profile_value(2, 0x69E8C5EE)
     raw = base64.b64decode(out)
     assert raw.hex(" ") == "0d 06 a9 f0 02 e7 a3 69 e8 c5 ee"
     assert cb.decode_command(out)["type"] == "profile"
-    # The signature is ignored on the synthesized Soul path, as for standby.
-    assert soul.profile_value(2, bytes.fromhex("00d32f8c"), 0x69E8C5EE) == out
-    generic = mp.GenericSoulProfile()
-    assert generic.profile_value(2, None, 0x69E8C5EE) == out
-
-    eletta = mp.ElettaProfile()
-    assert eletta.profile_value(2, None) is None
-    out = eletta.profile_value(2, bytes.fromhex("00d32f8c"), 0x69E8C5EE)
-    raw = base64.b64decode(out)
-    assert raw[-4:].hex(" ") == "00 d3 2f 8c"
-    assert raw[:11].hex(" ") == "0d 06 a9 f0 02 e7 a3 69 e8 c5 ee"
-    d = cb.decode_command(out)
-    assert d["type"] == "profile" and d["profile"] == 2 and d["crc_valid"] is True
+    assert mp.GenericSoulProfile().profile_value(2, 0x69E8C5EE) == out
 
 
 def test_recipe_dump_never_renders_the_profile_channel(soul_props: dict):
