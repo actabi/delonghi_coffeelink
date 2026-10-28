@@ -109,7 +109,7 @@ Or manually :
 
 [![Add Integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=delonghi_coffeelink)
 
-6. Enter your Coffee Link email and password (same as the mobile app)
+6. Enter your Coffee Link email and password (same as the mobile app), and pick the **region** your account was created in: *Europe* (default) or *North America* (US, Canada). A wrong region signs in fine but reports "No De'Longhi machine found" - try the other one.
 
 ### Manual
 

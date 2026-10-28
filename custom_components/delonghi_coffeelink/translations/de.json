@@ -6,14 +6,18 @@
         "description": "Gib die Zugangsdaten deines Coffee-Link-Kontos ein. Es sind dieselben, die du in der mobilen Coffee-Link-App verwendest.",
         "data": {
           "email": "E-Mail",
-          "password": "Passwort"
+          "password": "Passwort",
+          "region": "Region"
+        },
+        "data_description": {
+          "region": "Wo Ihr Coffee-Link-Konto erstellt wurde. Wählen Sie Nordamerika für ein Konto aus den USA oder Kanada."
         }
       }
     },
     "error": {
       "invalid_auth": "Ungültige E-Mail-Adresse oder ungültiges Passwort.",
       "cannot_connect": "Verbindung zur DeLonghi-Cloud fehlgeschlagen.",
-      "no_devices": "In diesem Konto wurden keine DeLonghi-Geräte gefunden.",
+      "no_devices": "Auf diesem Konto wurde in der gewählten Region keine De'Longhi-Maschine gefunden. Wenn die Coffee-Link-App Ihre Maschine anzeigt, versuchen Sie die andere Region.",
       "unknown": "Unerwarteter Fehler."
     },
     "abort": {

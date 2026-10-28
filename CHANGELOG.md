@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.26] - 2026-10-28
+
+### Added
+- **North American accounts (#60).** The integration only ever talked to the
+  European Ayla cloud. Coffee Link sign-in is global, so a US or Canadian
+  account logged in without complaint and then listed no machine at all:
+  "No DeLonghi devices found on this account". The setup form now has a
+  **Region** field - *Europe* (default) or *North America* - which selects both
+  the Ayla endpoints (`user-field` / `ads-field.aylanetworks.com`) and the
+  app credentials that cloud expects; the two regions use different pairs.
+
+  Existing installations carry no region and stay on Europe, with no migration
+  and nothing to re-enter. The "no machine found" error now suggests trying the
+  other region, since that is what it means nine times out of ten.
+
 ## [0.3.25] - 2026-09-09
 
 ### Fixed
