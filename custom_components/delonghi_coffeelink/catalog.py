@@ -615,10 +615,11 @@ def catalog_profile_labels(catalog: dict | None) -> dict[int, str]:
     its name blob for slots 4-5 is a bare NUL (2026-09-08 dump,
     ``d0 08 a4 f0 04 05 00 <crc>``). Those two slots are firmware capacity, not
     choices, and a button for them would offer profiles the machine's own
-    screen does not. A blank cell still counts as a slot, labelled with the
-    machine's own default ``Profile N``. Only when no name blob could be read
-    at all (the truncated reference dump) does every witnessed slot appear
-    under that default - honest about what is unknown rather than silently
+    screen does not. A blank cell still counts as a slot, labelled with its
+    slot number, which the translated button name renders as the machine's own
+    default ``Profile N``. Only when no name blob could be read at all (the
+    truncated reference dump) does every witnessed slot appear under that
+    default - honest about what is unknown rather than silently
     empty.
 
     Two buttons must not carry the same name, so any label two or more slots
@@ -628,7 +629,10 @@ def catalog_profile_labels(catalog: dict | None) -> dict[int, str]:
     """
     slots = (catalog or {}).get("profile_slots") or catalog_profile_slots(catalog)
     names = (catalog or {}).get("names", {}).get("profiles", {})
-    labels = {slot: names.get(slot) or f"Profile {slot}" for slot in slots}
+    # The fallback is the bare slot number: the translated button name already
+    # says "Profile {profile}", so "Profile N" here would read "Profile Profile N"
+    # - and stay English in every language.
+    labels = {slot: names.get(slot) or str(slot) for slot in slots}
     counts: dict[str, int] = {}
     for label in labels.values():
         counts[label] = counts.get(label, 0) + 1

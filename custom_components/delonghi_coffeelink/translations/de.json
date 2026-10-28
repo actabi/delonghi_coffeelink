@@ -311,6 +311,12 @@
     }
   },
   "selector": {
+    "region": {
+      "options": {
+        "eu": "Europa",
+        "us": "Nordamerika (USA, Kanada)"
+      }
+    },
     "beverage": {
       "options": {
         "espresso": "Espresso",

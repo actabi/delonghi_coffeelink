@@ -954,11 +954,11 @@ def test_profile_labels_fall_back_to_the_machine_default_on_the_fixture(cat: dic
     """
     assert cat["names"]["profiles"] == {}
     assert catalog.catalog_profile_labels(cat) == {
-        1: "Profile 1",
-        2: "Profile 2",
-        3: "Profile 3",
-        4: "Profile 4",
-        5: "Profile 5",
+        1: "1",
+        2: "2",
+        3: "3",
+        4: "4",
+        5: "5",
     }
 
 
@@ -1071,7 +1071,7 @@ def test_a_blank_cell_is_still_a_profile_the_machine_offers():
     )
     assert cat["profile_slots"] == [1, 2, 3]
     assert cat["names"]["profiles"] == {1: "Anna", 3: "Guest"}
-    assert catalog.catalog_profile_labels(cat) == {1: "Anna", 2: "Profile 2", 3: "Guest"}
+    assert catalog.catalog_profile_labels(cat) == {1: "Anna", 2: "2", 3: "Guest"}
 
 
 def test_profile_labels_disambiguate_a_shared_name():

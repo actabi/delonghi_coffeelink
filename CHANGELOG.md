@@ -55,6 +55,10 @@ All notable changes to this project will be documented in this file.
 - **Removed an unused duplicate `PLATFORMS` list from `const.py`.** Two lists
   with the same name, one of them read by nothing, is exactly how a new platform
   ends up registered in the wrong one. Only the list `__init__.py` loads remains.
+### Fixed
+- **The region choice in the setup form was English in every language.** Its
+  two options are now translated like the rest of the form.
+
 ## [0.3.26] - 2026-10-28
 
 ### Added

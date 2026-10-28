@@ -9,6 +9,11 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .ayla_client import AuthError, CloudError, DelonghiAylaClient
 from .const import (
@@ -27,8 +32,12 @@ STEP_USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_EMAIL): str,
         vol.Required(CONF_PASSWORD): str,
-        vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(
-            {REGION_EU: "Europe", REGION_US: "North America (US, Canada)"}
+        vol.Required(CONF_REGION, default=DEFAULT_REGION): SelectSelector(
+            SelectSelectorConfig(
+                options=[REGION_EU, REGION_US],
+                translation_key=CONF_REGION,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
         ),
     }
 )

@@ -165,6 +165,7 @@
     }
   },
   "selector": {
+    "region": { "options": { "eu": "Evropa", "us": "Severní Amerika (USA, Kanada)" } },
     "beverage": {
       "options": {
         "espresso": "Espresso",

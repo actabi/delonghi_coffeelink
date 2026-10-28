@@ -147,3 +147,12 @@ def test_no_platform_points_the_visit_link_at_the_machine():
         assert "lan_ip" not in source, (
             f"{filename} points the device link back at the machine"
         )
+
+
+def test_every_region_is_a_translated_selector_option():
+    """A region added to AYLA_REGIONS must show up translated in the setup form."""
+    expected = set(const.AYLA_REGIONS)
+    for path in [COMPONENT_DIR / "strings.json", *sorted(TRANSLATIONS_DIR.glob("*.json"))]:
+        options = _load_json(path)["selector"]["region"]["options"]
+        assert set(options) == expected, path.name
+        assert all(options.values()), path.name

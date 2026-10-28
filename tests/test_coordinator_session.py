@@ -1847,7 +1847,7 @@ def test_setup_adds_one_button_per_offered_profile():
 
     assert [b._slot for b in buttons] == [1, 2, 3, 4, 5]
     assert [b._attr_translation_placeholders for b in buttons] == [
-        {"profile": f"Profile {slot}"} for slot in (1, 2, 3, 4, 5)
+        {"profile": str(slot)} for slot in (1, 2, 3, 4, 5)
     ]
     assert [b._attr_unique_id for b in buttons] == [
         f"{coord.device.dsn}_set_profile_{slot}" for slot in (1, 2, 3, 4, 5)
