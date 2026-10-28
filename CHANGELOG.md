@@ -55,6 +55,26 @@ All notable changes to this project will be documented in this file.
 - **Removed an unused duplicate `PLATFORMS` list from `const.py`.** Two lists
   with the same name, one of them read by nothing, is exactly how a new platform
   ends up registered in the wrong one. Only the list `__init__.py` loads remains.
+- **Refused credentials start re-authentication instead of endless retries.**
+  Every sign-in is a full Gigya password login, and Gigya locks an account after
+  repeated failures (403120). A wrong password used to be retried forever behind
+  `ConfigEntryNotReady`, and the poll signed in again every 30 seconds. Now a
+  refusal raises `ConfigEntryAuthFailed` (at setup and while polling), Home
+  Assistant shows a re-authentication form, and the client remembers the refusal
+  so buttons and services do not try the same password again either.
+
+  Only failures that say nothing about the credentials are retried: network
+  errors, Gigya 5xxxxx and 403048 (rate limited), and Ayla SSO 408 / 429 / 5xx.
+  A temporary sign-in failure waits 1, 2, 4 ... up to 15 minutes before the next
+  try instead of the next 30-second poll. The wait is set on the poll interval,
+  because a failure the coordinator tolerates never reaches Home Assistant.
+
+  The form says what to do: a locked account (403120), a host clock that is off
+  (Gigya 403002 on getJWT, "Request has expired") and Ayla refusing the session
+  after Gigya accepted the password each get their own message. The last one
+  does not ask for the password at all: setup stops with a readable error, and
+  while polling it tries again after 30 minutes.
+
 ## [0.3.26] - 2026-10-28
 
 ### Added

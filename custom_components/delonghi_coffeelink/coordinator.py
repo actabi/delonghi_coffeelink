@@ -10,11 +10,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_signed_app_id
+from .ayla_client import (
+    AYLA_SSO_REFUSED,
+    AuthError,
+    AylaDevice,
+    CloudError,
+    DelonghiAylaClient,
+    normalize_signed_app_id,
+)
 from .command_builder import (
     app_id_from_signature,
     builder_structural_b64,
@@ -71,6 +78,12 @@ from .monitor import parse_monitor_b64
 
 _LOGGER = logging.getLogger(__name__)
 
+# Back-off after transient sign-in failures: 60 s, 120 s, ... up to 15 minutes.
+SIGN_IN_RETRY_BASE = 60
+SIGN_IN_RETRY_MAX = 900
+# After Ayla refused a session that Gigya accepted.
+AYLA_REFUSED_RETRY = 1800
+
 
 class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Periodically fetch device properties from Ayla cloud."""
@@ -119,6 +132,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._keepalive_armed = False
         # Consecutive failed polls currently being ridden out; reset on success.
         self._consecutive_failures = 0
+        # Transient sign-in failures in a row; drives the back-off.
+        self._auth_failures = 0
+        # Seconds to wait before the next poll after this poll's sign-in failed.
+        self._sign_in_retry: int | None = None
         self._session_confirmed = False
         self._session_connect_lock = asyncio.Lock()
         self._session_cold_task: asyncio.Task[None] | None = None
@@ -203,9 +220,17 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             props = await self._fetch_once()
         except UpdateFailed as err:
             self._consecutive_failures += 1
+            retry = self._sign_in_retry
+            # After a failed sign-in the next poll is another full password login,
+            # so wait longer. Set on the interval itself: a tolerated failure below
+            # never reaches Home Assistant, so a retry_after on it would be lost.
+            self.update_interval = timedelta(seconds=retry or DEFAULT_SCAN_INTERVAL)
             if (
                 self._consecutive_failures <= TRANSIENT_FAILURE_TOLERANCE
                 and self.data is not None
+                # One sign-in blip is ridden out; a longer wait is not hidden
+                # behind old data.
+                and (retry is None or retry <= SIGN_IN_RETRY_BASE)
             ):
                 _LOGGER.warning(
                     "Delonghi poll failed (%d/%d tolerated), serving last known "
@@ -217,10 +242,12 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return self.data
             raise
         self._consecutive_failures = 0
+        self.update_interval = timedelta(seconds=DEFAULT_SCAN_INTERVAL)
         return props
 
     async def _fetch_once(self) -> dict[str, Any]:
         """Fetch all properties + refresh device meta."""
+        self._sign_in_retry = None
         try:
             props = await self.client.async_get_properties(self.device.dsn)
             if self.command_property is None:
@@ -261,7 +288,26 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # takes several seconds to answer, so the value it produces is the
             # one this poll's successor will pick up.
             await self._refresh_monitor_session()
+            self._auth_failures = 0
             return props
+        except AuthError as err:
+            # Refused credentials stop polling and start the reauth flow (HA does
+            # both on ConfigEntryAuthFailed). Retrying them every 30 s is one full
+            # password login per poll - the path to a locked account.
+            if err.kind == AYLA_SSO_REFUSED and not err.transient:
+                # The password was accepted; Ayla refused the session. No reauth (the
+                # password is fine) and no 30 s loop: try again in half an hour.
+                self._sign_in_retry = AYLA_REFUSED_RETRY
+                raise UpdateFailed(f"Ayla refused the session: {err}") from err
+            if not err.transient:
+                raise ConfigEntryAuthFailed(f"De'Longhi sign-in refused: {err}") from err
+            # A transient sign-in failure is a full password login: back off, up to
+            # 15 minutes, instead of trying again every poll.
+            self._auth_failures += 1
+            self._sign_in_retry = min(
+                SIGN_IN_RETRY_BASE * 2 ** (self._auth_failures - 1), SIGN_IN_RETRY_MAX
+            )
+            raise UpdateFailed(f"De'Longhi sign-in failed: {err}") from err
         except CloudError as err:
             raise UpdateFailed(f"Ayla cloud error: {err}") from err
         except Exception as err:

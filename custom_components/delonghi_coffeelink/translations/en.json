@@ -1,6 +1,13 @@
 {
   "config": {
     "step": {
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "The De'Longhi cloud refused the stored password for {email}. Home Assistant has stopped signing in so the account does not get locked. Enter the current Coffee Link password.",
+        "data": {
+          "password": "Password"
+        }
+      },
       "user": {
         "title": "DeLonghi Coffee Link",
         "description": "Enter your Coffee Link account credentials. These are the same you use in the Coffee Link mobile app.",
@@ -15,12 +22,16 @@
       }
     },
     "error": {
+      "account_locked": "De'Longhi has temporarily locked this account after too many failed sign-ins. Wait about 30 minutes before trying again - every attempt in the meantime keeps it locked.",
+      "clock_skew": "De'Longhi rejected the sign-in because the clock of the Home Assistant host is off by more than about two minutes. Fix the time (NTP) on that host, then try again.",
+      "ayla_refused": "De'Longhi accepted the password, but its device cloud (Ayla) refused the session. This is not a password problem; try again later.",
       "invalid_auth": "Invalid email or password.",
       "cannot_connect": "Failed to connect to DeLonghi cloud.",
       "no_devices": "No De'Longhi machine found on this account in the selected region. If the Coffee Link app shows your machine, try the other region.",
       "unknown": "Unexpected error."
     },
     "abort": {
+      "reauth_successful": "Re-authentication was successful.",
       "already_configured": "This account is already configured."
     }
   },
@@ -338,6 +349,9 @@
     }
   },
   "exceptions": {
+    "ayla_refused": {
+      "message": "De'Longhi accepted the password, but its device cloud (Ayla) refused the session. This is not a password problem; try again later."
+    },
     "machine_offline": {
       "message": "{name} is offline on the De'Longhi cloud and cannot receive commands. Check that the machine is powered at the mains and connected to Wi-Fi (Coffee Link app), then try again."
     },

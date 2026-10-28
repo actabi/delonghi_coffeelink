@@ -116,6 +116,7 @@ def _install_stubs() -> None:
     core.HomeAssistant = object
     exceptions = types.ModuleType("homeassistant.exceptions")
     exceptions.HomeAssistantError = _StubHomeAssistantError
+    exceptions.ConfigEntryAuthFailed = type("ConfigEntryAuthFailed", (Exception,), {})
     storage = types.ModuleType("homeassistant.helpers.storage")
     storage.Store = _StubStore
     upd = types.ModuleType("homeassistant.helpers.update_coordinator")
@@ -1601,6 +1602,98 @@ def test_a_gateway_error_with_a_text_body_is_retried_not_raised():
 
     assert [d.dsn for d in devices] == ["AC000W019023280"]
     assert len(session.calls) == 2, "the 504 must have been retried, not surfaced"
+
+
+# --- sign-in failures while polling ------------------------------------------
+#
+# Every sign-in is a full Gigya password login, and Gigya locks an account after
+# repeated failures (403120). So a refused password must stop polling (HA starts
+# the reauth flow on ConfigEntryAuthFailed), and a temporary failure must not be
+# retried every 30 seconds. The tolerance above serves old data for a blip; it
+# must not swallow the longer wait, so the wait is set on the poll interval.
+
+class _SignInClient(_PollingClient):
+    """A polling client whose sign-in (inside the property read) can fail."""
+
+    def __init__(self, **kw) -> None:
+        super().__init__(**kw)
+        self.error: Exception | None = None
+
+    async def async_get_properties(self, dsn: str) -> dict:
+        if self.error is not None:
+            raise self.error
+        return self.props
+
+
+def _signed_in():
+    client = _SignInClient(props={"d700_tot_bev_b": {"value": 4638}})
+    return client, _primed(client)
+
+
+def _seconds(coord) -> float:
+    return coord.update_interval.total_seconds()
+
+
+def test_a_refused_password_stops_polling_and_asks_for_it():
+    client, coord = _signed_in()
+    client.error = ac.AuthError("Gigya login failed (code 403042)", code=403042)
+    with pytest.raises(coordinator.ConfigEntryAuthFailed):
+        asyncio.run(coord._async_update_data())
+
+
+def test_temporary_sign_in_failures_back_off_and_reset_after_success():
+    client, coord = _signed_in()
+    good = coord.data
+    client.error = ac.AuthError("Gigya 500001", transient=True)
+
+    # One blip is ridden out on the last data, but the next try waits a minute.
+    assert asyncio.run(coord._async_update_data()) is good
+    assert _seconds(coord) == 60
+    # Still failing: no longer hidden, and the wait doubles.
+    with pytest.raises(coordinator.UpdateFailed):
+        asyncio.run(coord._async_update_data())
+    assert _seconds(coord) == 120
+    with pytest.raises(coordinator.UpdateFailed):
+        asyncio.run(coord._async_update_data())
+    assert _seconds(coord) == 240
+
+    client.error = None
+    coord.data = asyncio.run(coord._async_update_data())
+    assert _seconds(coord) == const.DEFAULT_SCAN_INTERVAL
+    assert coord._auth_failures == 0
+
+
+def test_the_back_off_stops_at_fifteen_minutes():
+    client, coord = _signed_in()
+    client.error = ac.AuthError("Gigya 500001", transient=True)
+    for _ in range(10):
+        try:
+            asyncio.run(coord._async_update_data())
+        except coordinator.UpdateFailed:
+            pass
+    assert _seconds(coord) == 900
+
+
+def test_an_ayla_refusal_waits_half_an_hour_without_asking_for_the_password():
+    """Gigya accepted the password; asking for it again cannot help."""
+    client, coord = _signed_in()
+    client.error = ac.AuthError(
+        "Ayla SSO failed (HTTP 403)", kind=ac.AYLA_SSO_REFUSED
+    )
+    with pytest.raises(coordinator.UpdateFailed):
+        asyncio.run(coord._async_update_data())  # not served from old data
+    assert _seconds(coord) == 1800
+
+
+def test_a_cloud_error_after_a_sign_in_failure_uses_the_normal_interval():
+    """The wait belongs to the sign-in, not to whatever fails next."""
+    client, coord = _signed_in()
+    client.error = ac.AuthError("Gigya 500001", transient=True)
+    asyncio.run(coord._async_update_data())
+    assert _seconds(coord) == 60
+    client.error = ac.CloudError("get_properties failed (HTTP 504)")
+    asyncio.run(coord._async_update_data())
+    assert _seconds(coord) == const.DEFAULT_SCAN_INTERVAL
 
 
 # --- monitor staleness ------------------------------------------------------

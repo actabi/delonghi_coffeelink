@@ -14,13 +14,18 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .ayla_client import AuthError, CloudError, DelonghiAylaClient
+from .ayla_client import AYLA_SSO_REFUSED, AuthError, CloudError, DelonghiAylaClient
 from .const import (
     ACTION_START,
     ACTION_STOP,
@@ -89,6 +94,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.async_authenticate()
         devices = await client.async_get_devices()
     except AuthError as err:
+        # Refused credentials must NOT be retried: ConfigEntryNotReady retries
+        # forever, one full password login each time, until Gigya locks the
+        # account. ConfigEntryAuthFailed stops and asks the user to sign in.
+        if err.kind == AYLA_SSO_REFUSED and not err.transient:
+            # Gigya accepted the password; Ayla refused the session. Asking for the
+            # password cannot help, and ConfigEntryNotReady would sign in again every
+            # minute or so. Stop with a readable error; a reload tries again.
+            raise ConfigEntryError(
+                translation_domain=DOMAIN, translation_key="ayla_refused"
+            ) from err
+        if not err.transient:
+            raise ConfigEntryAuthFailed(f"DeLonghi sign-in refused: {err}") from err
         raise ConfigEntryNotReady(f"DeLonghi auth failed: {err}") from err
     except CloudError as err:
         raise ConfigEntryNotReady(f"DeLonghi cloud error: {err}") from err

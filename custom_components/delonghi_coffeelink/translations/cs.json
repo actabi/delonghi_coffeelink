@@ -1,6 +1,13 @@
 {
   "config": {
     "step": {
+      "reauth_confirm": {
+        "title": "Znovu se přihlásit",
+        "description": "Cloud De'Longhi odmítl uložené heslo pro {email}. Home Assistant se přestal přihlašovat, aby se účet nezablokoval. Zadejte aktuální heslo ke Coffee Link.",
+        "data": {
+          "password": "Heslo"
+        }
+      },
       "user": {
         "title": "De'Longhi Coffee Link",
         "description": "Zadejte přihlašovací údaje k účtu Coffee Link. Použijte stejné údaje jako v mobilní aplikaci Coffee Link.",
@@ -15,12 +22,16 @@
       }
     },
     "error": {
+      "account_locked": "De'Longhi tento účet dočasně zablokoval po příliš mnoha neúspěšných přihlášeních. Počkejte asi 30 minut, než to zkusíte znovu – každý pokus mezitím blokaci prodlužuje.",
+      "clock_skew": "De'Longhi přihlášení odmítl, protože hodiny hostitele Home Assistant se liší o více než asi dvě minuty. Opravte čas (NTP) a zkuste to znovu.",
+      "ayla_refused": "De'Longhi přijal heslo, ale cloud zařízení (Ayla) relaci odmítl. Nejde o problém s heslem; zkuste to později znovu.",
       "invalid_auth": "Neplatný e-mail nebo heslo.",
       "cannot_connect": "Nepodařilo se připojit ke cloudu De'Longhi.",
       "no_devices": "Ve zvoleném regionu nebyl na tomto účtu nalezen žádný kávovar De'Longhi. Pokud aplikace Coffee Link váš kávovar zobrazuje, zkuste druhý region.",
       "unknown": "Došlo k neočekávané chybě."
     },
     "abort": {
+      "reauth_successful": "Opětovné ověření bylo úspěšné.",
       "already_configured": "Tento účet je již nakonfigurován."
     }
   },
@@ -192,6 +203,9 @@
     }
   },
   "exceptions": {
+    "ayla_refused": {
+      "message": "De'Longhi přijal heslo, ale cloud zařízení (Ayla) relaci odmítl. Nejde o problém s heslem; zkuste to později znovu."
+    },
     "machine_offline": {
       "message": "{name} je v cloudu De'Longhi offline a nemůže přijímat příkazy. Zkontrolujte, zda je kávovar připojen k elektrické síti a k Wi-Fi (aplikace Coffee Link), a zkuste to znovu."
     },

@@ -34,7 +34,76 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class AuthError(Exception):
-    """Raised when authentication fails."""
+    """Raised when authentication fails.
+
+    ``transient`` separates "the cloud had a bad moment" from "these credentials
+    are refused". Only the second may stop polling and ask the user to sign in
+    again; retrying it is what gets an account locked. Gigya locks an account
+    after repeated failed logins (error 403120), and a wrong password used to be
+    retried forever behind ConfigEntryNotReady - one full login per attempt.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        transient: bool = False,
+        code: int | None = None,
+        kind: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.transient = transient
+        # The Gigya errorCode when there was one (403120 = account locked).
+        self.code = code
+        # "ayla_sso": Gigya accepted the password and Ayla then refused the session.
+        # Not a password problem, so it must not ask the user for the password.
+        self.kind = kind
+
+
+# Gigya account temporarily locked out after too many failed logins.
+GIGYA_ACCOUNT_LOCKED = 403120
+# AuthError.kind when Ayla refuses the session after Gigya accepted the password.
+AYLA_SSO_REFUSED = "ayla_sso"
+# How long such a refusal is answered from memory before one new sign-in is
+# allowed. A little shorter than the coordinator's retry (30 min), so that retry
+# really signs in again.
+AYLA_REFUSED_PAUSE = 25 * 60
+# Gigya "Request has expired": the signed getJWT timestamp is too far from
+# Gigya's clock (SAP KBA 2702335). The password was accepted; the HA host's clock
+# is wrong. Refused like a credential error - retrying cannot help until the
+# clock is fixed - but reported as a clock problem, not a bad password.
+GIGYA_REQUEST_EXPIRED = 403002
+# Gigya "rate limit exceeded" (SAP KBA 2702339): the request was throttled, the
+# credentials were not judged.
+GIGYA_RATE_LIMITED = 403048
+
+
+def _gigya_code(error_code: object) -> int | None:
+    try:
+        return int(error_code)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return None
+
+
+def gigya_error_is_transient(error_code: object) -> bool:
+    """True when a Gigya ``errorCode`` is worth retrying.
+
+    Gigya codes carry the HTTP class in their first three digits. Retryable:
+    5xxxxx (the service failing) and 403048 (rate limited). Everything else is
+    a refusal that needs the user - 403042 invalid login ID or password, 403120
+    account locked, 2xxxxx account pending registration or verification - and
+    retrying it is one more failed login each time. A code that is not even an
+    integer says nothing about the credentials, so it is retried.
+    """
+    code = _gigya_code(error_code)
+    if code is None:
+        return True
+    return 500000 <= code < 600000 or code == GIGYA_RATE_LIMITED
+
+
+def ayla_sso_status_is_transient(status: int) -> bool:
+    """Ayla SSO HTTP statuses worth retrying: timeouts, throttling, server errors."""
+    return status in (408, 429) or status >= 500
 
 
 class CloudError(Exception):
@@ -88,15 +157,49 @@ class DelonghiAylaClient:
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._expires_at: float = 0
+        # Set once the cloud refuses these credentials. Every later sign-in
+        # fails fast with it instead of trying the same password again: after
+        # ConfigEntryAuthFailed polling stops, but buttons, services and the
+        # refresh a press requests would otherwise each log in once more. A
+        # reauth reloads the entry, which builds a fresh client.
+        self._refused: AuthError | None = None
+        # When it was refused (monotonic). An Ayla refusal (password accepted) is
+        # only remembered for AYLA_REFUSED_PAUSE; a refused password for good.
+        self._refused_at: float = 0
 
     @property
     def ads_url(self) -> str:
         return self._region["ads_url"]
 
     async def async_authenticate(self) -> None:
-        """Perform full auth chain: Gigya -> JWT -> Ayla SSO."""
-        jwt = await self._gigya_login_and_jwt()
-        await self._ayla_sso_sign_in(jwt)
+        """Perform full auth chain: Gigya -> JWT -> Ayla SSO.
+
+        Network failures and unparseable answers surface as a transient
+        AuthError, never as a raw aiohttp/JSON exception: setup only maps
+        AuthError/CloudError to a retry, so anything else made Home Assistant
+        give up on the entry for good - e.g. after a power cut where HA boots
+        before the internet connection is back.
+        """
+        if self._refused is not None:
+            if (
+                self._refused.kind != AYLA_SSO_REFUSED
+                or time.monotonic() - self._refused_at < AYLA_REFUSED_PAUSE
+            ):
+                raise self._refused
+            self._refused = None  # the pause is over: one new sign-in
+        try:
+            jwt = await self._gigya_login_and_jwt()
+            await self._ayla_sso_sign_in(jwt)
+        except AuthError as err:
+            if not err.transient:
+                self._refused = err
+                self._refused_at = time.monotonic()
+            raise
+        except (aiohttp.ClientError, TimeoutError, ValueError, KeyError) as err:
+            raise AuthError(
+                f"Sign-in failed before the cloud answered: {type(err).__name__}: {err}",
+                transient=True,
+            ) from err
 
     async def async_ensure_auth(self) -> None:
         """Refresh access_token if expired."""
@@ -240,7 +343,11 @@ class DelonghiAylaClient:
         ) as resp:
             body = json.loads(await resp.text())
         if body.get("errorCode") != 0:
-            raise AuthError(f"Gigya login failed: {body.get('errorMessage')} (code {body.get('errorCode')})")
+            raise AuthError(
+                f"Gigya login failed: {body.get('errorMessage')} (code {body.get('errorCode')})",
+                transient=gigya_error_is_transient(body.get("errorCode")),
+                code=_gigya_code(body.get("errorCode")),
+            )
 
         session_token = body["sessionInfo"]["sessionToken"]
         session_secret = body["sessionInfo"]["sessionSecret"]
@@ -266,7 +373,17 @@ class DelonghiAylaClient:
         async with self._session.post(url, data=params, timeout=_TIMEOUT) as resp:
             jwt_body = json.loads(await resp.text())
         if jwt_body.get("errorCode") != 0:
-            raise AuthError(f"Gigya getJWT failed: {jwt_body.get('errorMessage')}")
+            hint = (
+                " - check the clock (NTP) of the Home Assistant host"
+                if _gigya_code(jwt_body.get("errorCode")) == GIGYA_REQUEST_EXPIRED
+                else ""
+            )
+            raise AuthError(
+                f"Gigya getJWT failed: {jwt_body.get('errorMessage')} "
+                f"(code {jwt_body.get('errorCode')}){hint}",
+                transient=gigya_error_is_transient(jwt_body.get("errorCode")),
+                code=_gigya_code(jwt_body.get("errorCode")),
+            )
         return jwt_body["id_token"]
 
     async def _ayla_sso_sign_in(self, jwt_token: str) -> None:
@@ -280,10 +397,21 @@ class DelonghiAylaClient:
         async with self._session.post(url, data=data, timeout=_TIMEOUT) as resp:
             if resp.status not in (200, 201):
                 text = await resp.text()
-                raise AuthError(f"Ayla SSO failed (HTTP {resp.status}): {text[:300]}")
+                # A 4xx is the token or app credentials being refused - retrying
+                # repeats a full Gigya password login every poll - except a
+                # timeout or throttle (408/429). A 5xx is Ayla having trouble.
+                raise AuthError(
+                    f"Ayla SSO failed (HTTP {resp.status}): {text[:300]}",
+                    transient=ayla_sso_status_is_transient(resp.status),
+                    kind=AYLA_SSO_REFUSED,
+                )
             body = await resp.json()
         if "access_token" not in body:
-            raise AuthError(f"Ayla SSO: no access_token in response: {body}")
+            # Keys only: whatever else came back is not ours to write to a log.
+            raise AuthError(
+                f"Ayla SSO: no access_token in response (keys: {sorted(body)})",
+                transient=True,
+            )
         self._access_token = body["access_token"]
         self._refresh_token = body.get("refresh_token")
         self._expires_at = time.time() + body.get("expires_in", 3600)

@@ -1,6 +1,13 @@
 {
   "config": {
     "step": {
+      "reauth_confirm": {
+        "title": "Logga in igen",
+        "description": "De'Longhi-molnet avvisade det sparade lösenordet för {email}. Home Assistant har slutat logga in så att kontot inte låses. Ange det aktuella Coffee Link-lösenordet.",
+        "data": {
+          "password": "Lösenord"
+        }
+      },
       "user": {
         "title": "DeLonghi Coffee Link",
         "description": "Ange inloggningsuppgifterna för ditt Coffee Link-konto. Det är samma som du använder i Coffee Link-appen.",
@@ -15,12 +22,16 @@
       }
     },
     "error": {
+      "account_locked": "De'Longhi har tillfälligt låst kontot efter för många misslyckade inloggningar. Vänta cirka 30 minuter innan du försöker igen - varje försök under tiden förlänger spärren.",
+      "clock_skew": "De'Longhi avvisade inloggningen eftersom klockan på Home Assistant-värden går fel med mer än cirka två minuter. Rätta tiden (NTP) och försök igen.",
+      "ayla_refused": "De'Longhi godkände lösenordet, men enhetsmolnet (Ayla) nekade sessionen. Det är inte ett lösenordsproblem; försök igen senare.",
       "invalid_auth": "Ogiltig e-postadress eller ogiltigt lösenord.",
       "cannot_connect": "Det gick inte att ansluta till De'Longhis moln.",
       "no_devices": "Ingen De'Longhi-maskin hittades på det här kontot i den valda regionen. Om Coffee Link-appen visar din maskin, prova den andra regionen.",
       "unknown": "Oväntat fel."
     },
     "abort": {
+      "reauth_successful": "Återautentiseringen lyckades.",
       "already_configured": "Det här kontot är redan konfigurerat."
     }
   },
@@ -338,6 +349,9 @@
     }
   },
   "exceptions": {
+    "ayla_refused": {
+      "message": "De'Longhi godkände lösenordet, men enhetsmolnet (Ayla) nekade sessionen. Det är inte ett lösenordsproblem; försök igen senare."
+    },
     "machine_offline": {
       "message": "{name} är offline i De'Longhis moln och kan inte ta emot kommandon. Kontrollera att maskinen har ström och är ansluten till Wi-Fi (Coffee Link-appen) och försök igen."
     },

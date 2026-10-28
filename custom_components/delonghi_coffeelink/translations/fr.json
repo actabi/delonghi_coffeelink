@@ -1,6 +1,13 @@
 {
   "config": {
     "step": {
+      "reauth_confirm": {
+        "title": "Se reconnecter",
+        "description": "Le cloud De'Longhi a refusé le mot de passe enregistré pour {email}. Home Assistant a cessé de se connecter pour éviter le blocage du compte. Saisissez le mot de passe Coffee Link actuel.",
+        "data": {
+          "password": "Mot de passe"
+        }
+      },
       "user": {
         "title": "DeLonghi Coffee Link",
         "description": "Entrez les identifiants de votre compte Coffee Link (ceux de l'app mobile). Pensez à fermer l'app Coffee Link sur votre téléphone pour que Home Assistant prenne le contrôle (voir README).",
@@ -15,12 +22,16 @@
       }
     },
     "error": {
+      "account_locked": "De'Longhi a temporairement bloqué ce compte après trop d'échecs de connexion. Attendez environ 30 minutes avant de réessayer : chaque tentative entre-temps maintient le blocage.",
+      "clock_skew": "De'Longhi a refusé la connexion car l'horloge de l'hôte Home Assistant est décalée de plus de deux minutes environ. Corrigez l'heure (NTP), puis réessayez.",
+      "ayla_refused": "De'Longhi a accepté le mot de passe, mais le cloud des appareils (Ayla) a refusé la session. Le mot de passe n'est pas en cause ; réessayez plus tard.",
       "invalid_auth": "E-mail ou mot de passe invalide.",
       "cannot_connect": "Connexion au cloud De'Longhi impossible.",
       "no_devices": "Aucune machine De'Longhi trouvée sur ce compte dans la région choisie. Si l'application Coffee Link affiche votre machine, essayez l'autre région.",
       "unknown": "Erreur inattendue."
     },
     "abort": {
+      "reauth_successful": "La réauthentification a réussi.",
       "already_configured": "Ce compte est déjà configuré."
     }
   },
@@ -338,6 +349,9 @@
     }
   },
   "exceptions": {
+    "ayla_refused": {
+      "message": "De'Longhi a accepté le mot de passe, mais le cloud des appareils (Ayla) a refusé la session. Le mot de passe n'est pas en cause ; réessayez plus tard."
+    },
     "machine_offline": {
       "message": "{name} est hors ligne sur le cloud De'Longhi et ne peut pas recevoir de commandes. Vérifiez que la machine est alimentée au secteur et connectée au Wi-Fi (application Coffee Link), puis réessayez."
     },

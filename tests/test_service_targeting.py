@@ -50,6 +50,8 @@ def _install_stubs() -> None:
     exceptions = types.ModuleType("homeassistant.exceptions")
     exceptions.HomeAssistantError = _StubHomeAssistantError
     exceptions.ConfigEntryNotReady = type("ConfigEntryNotReady", (Exception,), {})
+    exceptions.ConfigEntryAuthFailed = type("ConfigEntryAuthFailed", (Exception,), {})
+    exceptions.ConfigEntryError = type("ConfigEntryError", (Exception,), {})
     storage = types.ModuleType("homeassistant.helpers.storage")
     storage.Store = object
     upd = types.ModuleType("homeassistant.helpers.update_coordinator")
