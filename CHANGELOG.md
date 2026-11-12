@@ -57,6 +57,14 @@ All notable changes to this project will be documented in this file.
   ends up registered in the wrong one. Only the list `__init__.py` loads remains.
 
 ### Fixed
+- **Setup no longer fails when the account also holds a non-coffee appliance.**
+  A De'Longhi account can include other Ayla devices, e.g. a Pinguino air
+  conditioner (`oem_model=DL-pac`), which expose neither `data_request` nor
+  `app_data_request`. Its first refresh used to raise `ConfigEntryNotReady` for
+  the whole entry, so the coffee machine next to it never came up. Such devices
+  are now skipped with a warning; any other error (cloud outage, auth) still
+  makes the entry retry, and an account with no supported machine at all is
+  reported as such.
 - **The region choice in the setup form was English in every language.** Its
   two options are now translated like the rest of the form.
 

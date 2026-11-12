@@ -1902,3 +1902,26 @@ def test_pressing_a_profile_button_refuses_an_offline_machine():
         asyncio.run(entity.async_press())
     assert err.value.translation_key == "machine_offline"
     assert coord.client.writes == []
+
+
+# --- non-coffee appliances on the account ------------------------------------
+
+def test_missing_command_channel_marks_the_device_unsupported():
+    """A DL-pac air conditioner has no data_request / app_data_request."""
+    coord = _coord("DL-pac")
+    with pytest.raises(ac.UnsupportedDeviceError):
+        coord._detect_property(
+            {"device_connected": {}}, const.COMMAND_PROPERTY_CANDIDATES, "command"
+        )
+    # Still a CloudError, so every existing `except CloudError` keeps working.
+    assert issubclass(ac.UnsupportedDeviceError, ac.CloudError)
+
+
+def test_a_missing_optional_channel_is_not_an_unsupported_device():
+    coord = _coord("DL-millcore")
+    assert (
+        coord._detect_property(
+            {}, const.RESPONSE_PROPERTY_CANDIDATES, "response", required=False
+        )
+        is None
+    )

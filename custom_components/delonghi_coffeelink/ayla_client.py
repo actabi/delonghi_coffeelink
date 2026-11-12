@@ -45,6 +45,14 @@ class CloudError(Exception):
         self.http_status = http_status
 
 
+class UnsupportedDeviceError(CloudError):
+    """Raised when a device on the account is not a supported coffee machine.
+
+    E.g. a De'Longhi Pinguino air conditioner (oem_model=DL-pac) registered on
+    the same Ayla account, which exposes no coffee command channel.
+    """
+
+
 @dataclass
 class AylaDevice:
     """Minimal device info."""

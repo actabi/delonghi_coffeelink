@@ -20,7 +20,12 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .ayla_client import AuthError, CloudError, DelonghiAylaClient
+from .ayla_client import (
+    AuthError,
+    CloudError,
+    DelonghiAylaClient,
+    UnsupportedDeviceError,
+)
 from .const import (
     ACTION_START,
     ACTION_STOP,
@@ -115,7 +120,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Restore any Eletta frames learned in previous runs before the first
         # refresh, so buttons can replay immediately after a restart.
         await coord.async_load_learned()
-        await coord.async_config_entry_first_refresh()
+        try:
+            await coord.async_config_entry_first_refresh()
+        except ConfigEntryNotReady as err:
+            # Another De'Longhi appliance on the same account (e.g. a Pinguino
+            # air conditioner, oem_model=DL-pac) has no coffee command channel.
+            # Skip it instead of failing the whole entry; any other error
+            # (cloud outage, auth) still makes setup retry as before.
+            if is_unsupported_device_error(err):
+                _LOGGER.warning(
+                    "Skipping De'Longhi device dsn=%s (oem_model=%s): not a "
+                    "supported coffee machine (%s)",
+                    device.dsn,
+                    device.oem_model,
+                    err,
+                )
+                continue
+            raise
         if coord.data:
             prop_names = sorted(coord.data.keys())
             _LOGGER.debug(
@@ -125,6 +146,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ", ".join(prop_names),
             )
         coordinators.append(coord)
+
+    if not coordinators:
+        raise ConfigEntryNotReady(
+            "No supported De'Longhi coffee machine found on this account"
+        )
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinators
 
@@ -141,6 +167,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _register_services(hass)
 
     return True
+
+
+def is_unsupported_device_error(err: BaseException) -> bool:
+    """True if the exception chain contains an UnsupportedDeviceError.
+
+    The coordinator wraps it twice (UpdateFailed, then ConfigEntryNotReady),
+    so the original cause has to be looked up along the chain.
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = err
+    while cur is not None and id(cur) not in seen:
+        if isinstance(cur, UnsupportedDeviceError):
+            return True
+        seen.add(id(cur))
+        cur = cur.__cause__ or cur.__context__
+    return False
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
