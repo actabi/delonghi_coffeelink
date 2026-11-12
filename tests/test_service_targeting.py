@@ -710,3 +710,132 @@ def test_a_reload_of_the_only_entry_keeps_the_services():
     asyncio.run(dl.async_unload_entry(hass, types.SimpleNamespace(entry_id="entry_1")))
 
     assert const.SERVICE_START_BEVERAGE in hass.services.handlers
+
+
+# --- setup with a non-coffee appliance on the account ------------------------
+#
+# A De'Longhi account can hold appliances that are not coffee machines - a
+# Pinguino air conditioner reports oem_model=DL-pac and exposes neither
+# data_request nor app_data_request. Its first refresh used to fail the whole
+# config entry, so the coffee machine next to it never came up.
+
+
+class _SetupDevice:
+    def __init__(self, dsn: str, oem_model: str) -> None:
+        self.dsn = dsn
+        self.name = dsn
+        self.oem_model = oem_model
+        self.model = "AY008ESP1"
+        self.sw_version = "1.0"
+        self.connection_status = "Online"
+        self.lan_ip = None
+
+
+def _setup_client(devices):
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def async_authenticate(self) -> None:
+            return None
+
+        async def async_get_devices(self):
+            return devices
+
+    return _Client
+
+
+def _setup_coordinator(failures: dict[str, Exception]):
+    """A coordinator whose first refresh fails the way HA chains it."""
+    upd = sys.modules["homeassistant.helpers.update_coordinator"]
+    not_ready = sys.modules["homeassistant.exceptions"].ConfigEntryNotReady
+
+    class _Coord:
+        def __init__(self, hass, client, device) -> None:
+            self.device = device
+            self.data = {"data_request": {}}
+            self.profile = types.SimpleNamespace(uses_cloud_session=False)
+
+        async def async_load_learned(self) -> None:
+            return None
+
+        async def async_config_entry_first_refresh(self) -> None:
+            cause = failures.get(self.device.dsn)
+            if cause is None:
+                return
+            try:
+                try:
+                    raise cause
+                except Exception as err:
+                    raise upd.UpdateFailed(f"Ayla cloud error: {err}") from err
+            except upd.UpdateFailed as err:
+                raise not_ready(str(err)) from err
+
+    return _Coord
+
+
+class _SetupConfigEntries(_FakeConfigEntries):
+    def __init__(self) -> None:
+        super().__init__(["entry_1"])
+        self.forwarded = False
+
+    async def async_forward_entry_setups(self, entry, platforms) -> None:
+        self.forwarded = True
+
+
+def _run_setup(monkeypatch, devices, failures):
+    monkeypatch.setattr(dl, "DelonghiAylaClient", _setup_client(devices))
+    monkeypatch.setattr(dl, "DelonghiCoordinator", _setup_coordinator(failures))
+    hass = _FakeHass()
+    hass.config_entries = _SetupConfigEntries()
+    entry = types.SimpleNamespace(
+        entry_id="entry_1",
+        data={const.CONF_EMAIL: "user@example.com", const.CONF_PASSWORD: "x"},
+    )
+    return hass, asyncio.run(dl.async_setup_entry(hass, entry))
+
+
+def _unsupported(dsn: str):
+    return dl.UnsupportedDeviceError(
+        f"No known command property found for dsn={dsn} (oem_model=DL-pac)."
+    )
+
+
+def test_a_non_coffee_appliance_is_skipped_and_the_machine_still_sets_up(
+    monkeypatch,
+):
+    soul = _SetupDevice("AC000W016000001", "DL-millcore")
+    pinguino = _SetupDevice("AC000W021000002", "DL-pac")
+    hass, ok = _run_setup(
+        monkeypatch,
+        [soul, pinguino],
+        {pinguino.dsn: _unsupported(pinguino.dsn)},
+    )
+
+    assert ok is True
+    coords = hass.data[const.DOMAIN]["entry_1"]
+    assert [c.device.dsn for c in coords] == [soul.dsn]
+    assert hass.config_entries.forwarded
+
+
+def test_a_cloud_error_on_one_machine_still_fails_the_entry(monkeypatch):
+    """Only "not a coffee machine" is skipped; a real outage must still retry."""
+    not_ready = sys.modules["homeassistant.exceptions"].ConfigEntryNotReady
+    soul = _SetupDevice("AC000W016000001", "DL-millcore")
+    with pytest.raises(not_ready):
+        _run_setup(
+            monkeypatch,
+            [soul],
+            {soul.dsn: dl.CloudError("HTTP 503", http_status=503)},
+        )
+
+
+def test_an_account_with_no_coffee_machine_is_not_ready(monkeypatch):
+    not_ready = sys.modules["homeassistant.exceptions"].ConfigEntryNotReady
+    pinguino = _SetupDevice("AC000W021000002", "DL-pac")
+    with pytest.raises(not_ready, match="No supported"):
+        _run_setup(
+            monkeypatch,
+            [pinguino],
+            {pinguino.dsn: _unsupported(pinguino.dsn)},
+        )

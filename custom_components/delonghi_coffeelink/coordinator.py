@@ -14,7 +14,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .ayla_client import AylaDevice, CloudError, DelonghiAylaClient, normalize_signed_app_id
+from .ayla_client import (
+    AylaDevice,
+    CloudError,
+    DelonghiAylaClient,
+    UnsupportedDeviceError,
+    normalize_signed_app_id,
+)
 from .command_builder import (
     app_id_from_signature,
     builder_structural_b64,
@@ -518,7 +524,10 @@ class DelonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device.dsn,
             )
             return None
-        raise CloudError(
+        # A missing command channel means this is not a coffee machine at all
+        # (another appliance on the same account), not a transient cloud error.
+        error_cls = UnsupportedDeviceError if kind == "command" else CloudError
+        raise error_cls(
             f"No known {kind} property found for dsn={self.device.dsn} "
             f"(oem_model={self.device.oem_model}). Tried {candidates}. "
             "Please open an issue with debug logs."
